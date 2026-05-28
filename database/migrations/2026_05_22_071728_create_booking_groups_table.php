@@ -17,7 +17,7 @@ return new class extends Migration
             $table->date('date');
             $table->integer('time_id');
             $table->integer('lead_user_id');
-            $table->string('status')->comment('pending/confirmed/cancelled/completed');
+            $table->enum('status', ['pending', 'waiting_confirm', 'confirmed', 'completed', 'cancelled'])->default('pending')->comment('pending=รอสมาชิก, waiting_confirm=ครบแต่รอเจ้าหน้าที่, confirmed=ยืนยัน, completed=เสร็จ, cancelled=ยกเลิก');
             $table->string('join_token')->unique();
             $table->timestamp('token_expires_at');
             $table->string('cancel_code')->nullable();

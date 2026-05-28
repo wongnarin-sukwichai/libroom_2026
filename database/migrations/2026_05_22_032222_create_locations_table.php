@@ -11,13 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('table_rooms', function (Blueprint $table) {
+        Schema::create('table_locations', function (Blueprint $table) {
             $table->id();
             $table->string('pic')->nullable();
-            $table->integer('zone_id');
             $table->string('title');
+            $table->string('title_eng')->nullable();
             $table->string('detail')->nullable();
-            $table->integer('min_capacity')->default(1)->comment('1, 3, 5');
+            $table->enum('status', ['0', '1'])->default('1')->comment('0=เปิด,1=ปิด');
             $table->timestamps();
         });
     }
@@ -27,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('table_rooms');
+        Schema::dropIfExists('table_locations');
     }
 };

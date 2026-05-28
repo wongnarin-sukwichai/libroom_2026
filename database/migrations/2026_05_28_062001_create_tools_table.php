@@ -11,13 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('table_locations', function (Blueprint $table) {
+        Schema::create('tools', function (Blueprint $table) {
             $table->id();
-            $table->string('pic')->nullable();
-            $table->string('title');
-            $table->string('title_eng')->nullable();
-            $table->string('detail')->nullable();
-            $table->integer('status')->nullable()->comment('1=close');
+            $table->string('name');
+            $table->string('icon')->default('fa-wrench');
             $table->timestamps();
         });
     }
@@ -27,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('table_locations');
+        Schema::dropIfExists('tools');
     }
 };

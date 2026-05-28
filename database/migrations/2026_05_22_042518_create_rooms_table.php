@@ -11,18 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('table_zones', function (Blueprint $table) {
+        Schema::create('table_rooms', function (Blueprint $table) {
             $table->id();
             $table->string('pic')->nullable();
-            $table->integer('loc_id');
-            $table->integer('topic');
+            $table->integer('zone_id');
             $table->string('title');
-            $table->string('title_eng')->nullable();
             $table->string('detail')->nullable();
-            $table->string('capacity')->nullable();
-            $table->string('tool')->nullable();
-            $table->string('time')->nullable();
-            $table->integer('status')->nullable()->comment('1=close');
+            $table->enum('confirm_type', ['auto', 'manual'])->default('auto')->comment('auto=confirmed ทันที (single only), manual=รอเจ้าหน้าที่');
             $table->timestamps();
         });
     }
@@ -32,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('table_zones');
+        Schema::dropIfExists('table_rooms');
     }
 };

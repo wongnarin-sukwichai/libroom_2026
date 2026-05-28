@@ -13,8 +13,9 @@ class AdminSeeder extends Seeder
             ['email' => 'wongnarin.s@msu.ac.th'],
             [
                 'google_id' => 'pending_google_id',
-                'name'      => 'Wongnarin S',
+                'name'      => 'วงศ์นรินทร์ สุขวิชัย',
                 'avatar'    => null,
+                'role'      => 'admin',
             ]
         );
     }

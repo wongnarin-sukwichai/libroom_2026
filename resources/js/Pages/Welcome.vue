@@ -801,8 +801,11 @@ const hideToast = () => {
                 </button>
             </div>
 
+            <Transition name="tab" mode="out-in">
+            <div :key="activeArea">
+
             <!-- โซน 1: อาคารวิทยบริการ (หลัก) -->
-            <div v-show="activeArea === 1" class="space-y-6">
+            <div v-if="activeArea === 1" class="space-y-6">
                 <div
                     class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200/60 rounded-xl md:flex-row"
                 >
@@ -1097,7 +1100,7 @@ const hideToast = () => {
             </div>
 
             <!-- โซน 2: Co-Working Space (ชั้น 1) -->
-            <div v-show="activeArea === 2" class="space-y-6">
+            <div v-else-if="activeArea === 2" class="space-y-6">
                 <div
                     class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200/65 rounded-xl md:flex-row"
                 >
@@ -1394,7 +1397,7 @@ const hideToast = () => {
             </div>
 
             <!-- โซน 3: ห้องศึกษาค้นคว้ากลุ่ม (ชั้น 3-4) -->
-            <div v-show="activeArea === 3" class="space-y-6">
+            <div v-else-if="activeArea === 3" class="space-y-6">
                 <div
                     class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r from-green-50 to-emerald-50 border-green-200/65 rounded-xl md:flex-row"
                 >
@@ -1685,6 +1688,9 @@ const hideToast = () => {
                     </div>
                 </div>
             </div>
+
+            </div>
+            </Transition>
         </main>
 
         <!-- ข้อมูลสถิติของห้องสมุดภาพรวม -->
@@ -1888,9 +1894,10 @@ const hideToast = () => {
         <!-- ================= MODALS SECTION ================= -->
 
         <!-- 1. คุกกี้ ยอมรับนโยบายความเป็นส่วนตัว (Cookie Consent Bar) -->
+        <Transition name="fade">
         <div
             v-if="showCookieConsent"
-            class="fixed inset-x-0 bottom-0 z-50 p-4 text-white transition-all duration-500 border-t shadow-2xl bg-slate-900/95 backdrop-blur-md border-slate-800"
+            class="fixed inset-x-0 bottom-0 z-50 p-4 text-white border-t shadow-2xl bg-slate-900/95 backdrop-blur-md border-slate-800"
         >
             <div
                 class="flex flex-col items-center justify-between gap-4 mx-auto max-w-7xl md:flex-row"
@@ -1932,8 +1939,10 @@ const hideToast = () => {
                 </div>
             </div>
         </div>
+        </Transition>
 
         <!-- 2. ป๊อปอัพ ข้อปฏิบัติการใช้งาน (Rules Modal) -->
+        <Transition name="fade">
         <div
             v-show="modals.rules"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -2001,8 +2010,10 @@ const hideToast = () => {
                 </div>
             </div>
         </div>
+        </Transition>
 
         <!-- 4. ป๊อปอัพ คู่มือการใช้งาน (Manual Modal) -->
+        <Transition name="fade">
         <div
             v-show="modals.manual"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -2112,8 +2123,10 @@ const hideToast = () => {
                 </div>
             </div>
         </div>
+        </Transition>
 
         <!-- 5. ป๊อปอัพ แบบประเมินความพึงพอใจ (Evaluation Modal) -->
+        <Transition name="fade">
         <div
             v-show="modals.evaluation"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -2268,8 +2281,10 @@ const hideToast = () => {
                 </form>
             </div>
         </div>
+        </Transition>
 
         <!-- 6. ป๊อปอัพยืนยันการทำรายการจอง (Booking Confirmation Modal) -->
+        <Transition name="fade">
         <div
             v-show="modals.booking"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -2519,48 +2534,36 @@ const hideToast = () => {
                 </form>
             </div>
         </div>
+        </Transition>
 
         <!-- 7. แจ้งเตือน (Toast Notification) -->
-        <div
-            :class="
-                toast.show
-                    ? 'translate-x-0 opacity-100'
-                    : 'translate-x-96 opacity-0'
-            "
-            class="fixed z-50 flex items-start w-full max-w-sm gap-3 p-4 transition-all duration-300 bg-white border-l-4 shadow-2xl top-6 right-6 rounded-xl"
-            style="border-color: var(--border-color)"
-            :style="{ '--border-color': toast.isError ? '#ef4444' : '#22c55e' }"
-        >
+        <Transition name="fade">
             <div
-                :class="
-                    toast.isError
-                        ? 'bg-red-100 text-red-600'
-                        : 'bg-green-100 text-green-600'
-                "
-                class="p-2 rounded-full mt-0.5"
+                v-if="toast.show"
+                class="fixed z-50 flex items-start w-full max-w-sm gap-3 p-4 bg-white border-l-4 shadow-2xl top-6 right-6 rounded-xl"
+                :style="{ borderLeftColor: toast.isError ? '#ef4444' : '#22c55e' }"
             >
-                <i
-                    :class="
-                        toast.isError
-                            ? 'fa-solid fa-circle-xmark'
-                            : 'fa-solid fa-circle-check'
-                    "
-                    class="text-lg"
-                ></i>
+                <div
+                    :class="toast.isError ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'"
+                    class="p-2 rounded-full mt-0.5"
+                >
+                    <i
+                        :class="toast.isError ? 'fa-solid fa-circle-xmark' : 'fa-solid fa-circle-check'"
+                        class="text-lg"
+                    ></i>
+                </div>
+                <div class="flex-grow">
+                    <h4 class="text-sm font-bold text-slate-900 font-prompt">{{ toast.title }}</h4>
+                    <p class="text-xs text-slate-500 mt-0.5">{{ toast.desc }}</p>
+                </div>
+                <button
+                    @click="hideToast"
+                    class="transition-colors text-slate-400 hover:text-slate-600"
+                >
+                    <i class="text-sm fa-solid fa-xmark"></i>
+                </button>
             </div>
-            <div class="flex-grow">
-                <h4 class="text-sm font-bold text-slate-900 font-prompt">
-                    {{ toast.title }}
-                </h4>
-                <p class="text-xs text-slate-500 mt-0.5">{{ toast.desc }}</p>
-            </div>
-            <button
-                @click="hideToast"
-                class="transition-colors text-slate-400 hover:text-slate-600"
-            >
-                <i class="text-sm fa-solid fa-xmark"></i>
-            </button>
-        </div>
+        </Transition>
     </div>
 </template>
 
