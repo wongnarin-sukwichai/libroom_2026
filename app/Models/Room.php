@@ -10,6 +10,11 @@ class Room extends Model
 
     protected $fillable = ['pic', 'zone_id', 'title', 'detail', 'confirm_type'];
 
+    public function zone()
+    {
+        return $this->belongsTo(Zone::class, 'zone_id');
+    }
+
     public function tools()
     {
         return $this->hasMany(RoomTool::class, 'room_id');

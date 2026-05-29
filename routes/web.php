@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Auth\GoogleController;
+use App\Http\Controllers\BookingController;
 use App\Http\Controllers\LocationController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -27,6 +28,8 @@ if (app()->environment('local')) {
         return redirect()->route('welcome');
     })->name('dev.login-member');
 }
+
+Route::get('/rooms/{room}/slots', [BookingController::class, 'slots'])->name('booking.slots');
 
 Route::get('/auth/google', [GoogleController::class, 'redirect'])->name('auth.google');
 Route::get('/auth/google/callback', [GoogleController::class, 'callback']);

@@ -18,4 +18,9 @@ class Zone extends Model
     {
         return $this->belongsTo(Location::class, 'loc_id');
     }
+
+    public function rooms()
+    {
+        return $this->hasMany(Room::class, 'zone_id');
+    }
 }

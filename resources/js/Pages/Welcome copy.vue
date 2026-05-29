@@ -1,6 +1,24 @@
 <script setup>
-import { Head, Link } from "@inertiajs/vue3";
+import { usePage, router } from "@inertiajs/vue3";
 import { ref, computed, onMounted } from "vue";
+
+const props = defineProps({
+    locations: Array,
+});
+
+// คืนชื่อ location ตามภาษาปัจจุบัน
+const locTitle = (loc) =>
+    currentLang.value === 'en'
+        ? (loc?.title_eng ?? loc?.title)
+        : loc?.title;
+
+const locationIcons = ['fa-graduation-cap', 'fa-laptop-code', 'fa-users-gear'];
+
+const currentLocation = computed(() => props.locations?.[activeArea.value - 1]);
+const currentZones    = computed(() => currentLocation.value?.zones ?? []);
+const zoneTitle  = (zone) => currentLang.value === 'en' ? (zone?.title_eng ?? zone?.title) : zone?.title;
+const zoneDetail = (zone) => zone?.detail ?? '';
+import Swal from "sweetalert2";
 
 // --- 1. ระบบจัดการเปลี่ยนภาษา (Localization Dictionary) ---
 const currentLang = ref("th");
@@ -12,11 +30,6 @@ const translations = {
         navRules: "ข้อปฏิบัติการใช้งาน",
         navManual: "คู่มือการใช้งาน",
         navFeedback: "แบบประเมินความพึงพอใจ",
-        bannerSub: "ระบบจองออนไลน์ สะดวก รวดเร็ว",
-        bannerTitle1: "STUDY ROOM",
-        bannerTitle2: "SERVICE",
-        bannerDesc:
-            "สำนักวิทยบริการ มหาวิทยาลัยมหาสารคาม ยินดีต้อนรับสู่พื้นที่แห่งการเรียนรู้ร่วมกัน",
         quickStatTitle: "ประกาศสำคัญ / Important",
         ann1: "กรุณาเข้าเช็คอินภายใน 15 นาทีหลังจากเวลาที่จอง",
         ann2: "การจองห้องใช้เพื่อกิจกรรมทางวิชาการและการเรียนรู้เท่านั้น",
@@ -24,56 +37,9 @@ const translations = {
         mainTitle: "เลือกพื้นที่ให้บริการจอง",
         mainSub:
             "ท่านสามารถเลือกโซนพื้นที่ที่ต้องการใช้งาน เพื่อดูห้องย่อย ค้นหารายละเอียด และทำรายการจองออนไลน์ได้ทันที",
-        area1: "อาคารวิทยบริการ A",
-        area2: "อาคารวิทยบริการ B",
-        area3: "MSU SPACE",
-        area1Title: "อาคารวิทยบริการ A",
-        area1Desc:
-            "เหมาะสำหรับการอ่านหนังสือคนเดียว หรือกลุ่มย่อยที่เน้นความเงียบสงบ มั่นใจได้ในความเงียบเพื่อการทบทวนตำรา",
-        area2Title: "อาคารวิทยบริการ B",
-        area2Desc:
-            "พื้นที่สร้างสรรค์สุดผ่อนคลาย สามารถใช้เสียงระดับปานกลางได้ มีบาร์กาแฟและการตกแต่งที่ทันสมัยเพื่อการแชร์ไอเดีย",
-        area3Title: "MSU SPACE",
-        area3Desc:
-            "ห้องส่วนตัวเก็บเสียงอย่างดี รองรับกลุ่มใหญ่ที่ต้องการทำโปรเจกต์ สัมมนา หรืองานนำเสนอระดับคณะวิชา",
         activeArea: "พร้อมให้บริการ",
-        room1_1: "คอกศึกษาเดี่ยว (Individual Booth)",
-        room1_1_desc:
-            "จำนวน 10 ที่นั่ง พื้นที่ส่วนตัวเพื่อการจดจ่อ มีปลั๊กไฟและโคมไฟส่วนตัว",
-        room1_2: "โต๊ะรวมกลุ่มเล็ก (Small Group Table)",
-        room1_2_desc:
-            "จำนวน 5 โต๊ะ เหมาะสำหรับการทำรายงาน คุยโปรเจกต์กลุ่มเล็กๆ",
-        room1_3: "ห้องสัมมนาวิชาการ (Seminar Room)",
-        room1_3_desc:
-            "ห้องบรรยายและสัมมนาขนาดเล็กสำหรับติวหนังสือก่อนสอบหรือนำเสนอผลงาน",
-        room2_1: "พื้นที่แลกเปลี่ยนไอเดีย (Idea Hub)",
-        room2_1_desc:
-            "โต๊ะวงรีขนาดใหญ่ เหมาะสำหรับการระดมสมอง มีบอร์ดกระจกสำหรับจดโน้ตไอเดีย",
-        room2_2: "มุมบริการคอมพิวเตอร์กราฟิก (Mac Suite)",
-        room2_2_desc:
-            "เครื่อง iMac สำหรับทำงานออกแบบ ตัดต่อกราฟิก หรือการวิเคราะห์ข้อมูลขั้นสูง",
-        room2_3: "พื้นที่พักผ่อนและอ่านข่าวสาร (Relax & Read)",
-        room2_3_desc:
-            "เก้าอี้บีนแบ็กพรีเมียม สภาพแวดล้อมผ่อนคลาย เหมาะกับการเปิดหาไอเดียเชิงสร้างสรรค์",
-        room3_1: "ห้องจองศึกษากลุ่มย่อย (Group Room M)",
-        room3_1_desc:
-            "ห้องศึกษาขนาดกลางประตูปิดทึบ มีความเป็นส่วนตัวสูงในการติวตำราเป็นกลุ่มย่อย",
-        room3_2: "ห้องจองศึกษากลุ่มใหญ่ (Group Room L)",
-        room3_2_desc:
-            "ห้องศึกษาขนาดใหญ่ พร้อมสมาร์ททีวีเพื่อเชื่อมต่อพรีเซนต์งานหน้าห้อง",
-        room3_3: "ห้องสัมนา/ฉายภาพยนตร์ระดับกลุ่ม (Mini Theater)",
-        room3_3_desc:
-            "สุดยอดห้องระบบโฮมเธียเตอร์ ติดตั้งอุปกรณ์และเครื่องฉายโปรเจกเตอร์คุณภาพระดับสูง",
-        capacity: "ความจุ",
-        facilities: "สิ่งอำนวยความสะดวก",
-        maxTime: "ระยะเวลาใช้",
         btnBook: "รายละเอียด",
         btnUnavailable: "เต็มแล้ว",
-        unitPerson: "คน/คอก",
-        unitPeople: "คน",
-        statusAvailable: "ว่าง",
-        statusNearFull: "ใกล้เต็ม",
-        statusBusy: "ไม่ว่าง",
         statArea: "พื้นที่ใหญ่ให้บริการ",
         statRoom: "ห้อง/คอกย่อยทั้งหมด",
         statDaily: "ผู้ใช้งานต่อวันโดยเฉลี่ย",
@@ -87,14 +53,6 @@ const translations = {
             "เว็บไซต์นี้ใช้คุกกี้เพื่อวัตถุประสงค์ในการจองพื้นที่ จัดเก็บข้อมูลผู้ใช้และอำนวยความสะดวกในการบริการ ท่านยินยอมให้เราเก็บประวัติการจองและบันทึกล็อกอินในระบบเพื่อประสิทธิภาพสูงสุดตามนโยบายคุ้มครองข้อมูลส่วนบุคคล (PDPA)",
         cookieAccept: "ยอมรับทั้งหมด",
         cookieDecline: "ปฏิเสธ",
-        loginHeader: "ลงชื่อเข้าใช้งานระบบจอง",
-        loginNotice:
-            "เข้าใช้งานโดยใช้บัญชีอินเทอร์เน็ตของมหาวิทยาลัยมหาสารคาม (MSU Account) เพื่อยืนยันสิทธิ์นิสิตหรือบุคลากรในการเข้าจองพื้นที่",
-        loginUsernameLabel: "ชื่อผู้ใช้งาน (MSU Account)",
-        loginPasswordLabel: "รหัสผ่าน (Password)",
-        rememberMe: "จดจำฉันไว้ในระบบ",
-        forgotPassword: "ลืมรหัสผ่าน?",
-        loginBtnSubmit: "เข้าสู่ระบบ",
         rulesHeader: "ระเบียบและข้อปฏิบัติในการเข้าใช้บริการพื้นที่",
         rulesNotice:
             "กรุณาปฏิบัติตามกฎกติกาอย่างเคร่งครัดเพื่อความเป็นระเบียบและบรรยากาศที่ดีสำหรับทุกคน",
@@ -133,8 +91,6 @@ const translations = {
         bookingLoginAlert:
             "ขออภัย คุณจำเป็นต้องเข้าสู่ระบบก่อนทำการจองห้อง กรุณากดปุ่มด้านล่างนี้เพื่อล็อกอินก่อนทำรายการ",
         bookDate: "ระบุวันที่ประสงค์จอง",
-        bookTimeStart: "ตั้งแต่เวลา (Start)",
-        bookTimeEnd: "สิ้นสุดเวลา (End)",
         bookTerms:
             "ฉันขอยืนยันว่าจะมาเช็คอินเข้าใช้ห้องตรงเวลา และจะรักษาความเป็นระเบียบเรียบร้อยภายในพื้นที่บริการเป็นอย่างดี",
         btnConfirmComplete: "ยืนยันทำรายการจอง",
@@ -145,11 +101,6 @@ const translations = {
         navRules: "Rules & Policies",
         navManual: "User Manual",
         navFeedback: "Satisfaction Survey",
-        bannerSub: "Online Booking System - Simple & Fast",
-        bannerTitle1: "STUDY ROOM",
-        bannerTitle2: "SERVICES",
-        bannerDesc:
-            "MSU Library welcomes you to the cooperative space for lifelong learning.",
         quickStatTitle: "Important Announcement",
         ann1: "Please check-in within 15 minutes of your booked time slot.",
         ann2: "Room bookings are strictly for educational and academic use.",
@@ -157,56 +108,9 @@ const translations = {
         mainTitle: "Select Booking Area",
         mainSub:
             "Choose a primary area from the list to explore and make an instant online reservation.",
-        area1: "Academic Library (Main Building)",
-        area2: "Co-Working Space (1st Floor)",
-        area3: "Group Study & Research Zone (3rd-4th Fl.)",
-        area1Title: "Academic Library Main Building",
-        area1Desc:
-            "Perfect for quiet study sessions and individual work requiring deep concentration.",
-        area2Title: "Co-Working Space (1st Floor)",
-        area2Desc:
-            "Relaxed creative atmosphere allowing moderate voice levels. Comes with coffee bar decoration.",
-        area3Title: "Group Study & Research Zone (3rd-4th Fl.)",
-        area3Desc:
-            "Private soundproof group rooms suitable for projects, workshops, and group presentations.",
         activeArea: "Available for Booking",
-        room1_1: "Individual Booth",
-        room1_1_desc:
-            "10 booths available. Premium personal pod equipped with lighting and power ports.",
-        room1_2: "Small Group Table",
-        room1_2_desc:
-            "5 tables available. Excellent for light projects and small group assignments.",
-        room1_3: "Seminar Room",
-        room1_3_desc:
-            "Mini lecture/meeting rooms to facilitate tutorial sessions and pre-exam discussions.",
-        room2_1: "Idea Hub",
-        room2_1_desc:
-            "Oval group layouts with premium writing boards. Perfect for active brainstormings.",
-        room2_2: "Mac Suite",
-        room2_2_desc:
-            "iMac design terminals preloaded with premium editing and programming software suites.",
-        room2_3: "Relax & Read Zone",
-        room2_3_desc:
-            "Cozy spaces with giant beanbags and a highly relaxing interior style.",
-        room3_1: "Group Study Room M",
-        room3_1_desc:
-            "Closed-door mid-sized room providing excellent privacy for group tutorials.",
-        room3_2: "Group Study Room L",
-        room3_2_desc:
-            "Spacious private room featuring interactive screens for smooth presentations.",
-        room3_3: "Mini Theater",
-        room3_3_desc:
-            "State-of-the-art cinematic meeting rooms featuring premium projection system.",
-        capacity: "Capacity",
-        facilities: "Facilities",
-        maxTime: "Max Duration",
         btnBook: "Book Now",
         btnUnavailable: "Fully Booked",
-        unitPerson: "Person/Booth",
-        unitPeople: "People",
-        statusAvailable: "Available",
-        statusNearFull: "Near Full",
-        statusBusy: "Unavailable",
         statArea: "Active Study Zones",
         statRoom: "Total Active Pods",
         statDaily: "Avg. Daily Visitors",
@@ -220,14 +124,6 @@ const translations = {
             "We use cookies to enhance booking flow, track state session and deliver superior user experience in compliance with Personal Data Protection Act (PDPA) policies.",
         cookieAccept: "Accept All",
         cookieDecline: "Decline",
-        loginHeader: "Access Booking Platform",
-        loginNotice:
-            "Authenticate with your MSU Account to check student or staff eligibility.",
-        loginUsernameLabel: "MSU Account ID",
-        loginPasswordLabel: "Password",
-        rememberMe: "Remember Me",
-        forgotPassword: "Forgot Password?",
-        loginBtnSubmit: "Secure Sign-in",
         rulesHeader: "Rules and Conditions of Use",
         rulesNotice:
             "Please behave ethically and strictly follow regulations to maintain a positive study environment.",
@@ -269,8 +165,6 @@ const translations = {
         bookingLoginAlert:
             "Sorry, you must authenticate first. Click the sign-in button below to perform a quick login.",
         bookDate: "Choose Date",
-        bookTimeStart: "Start Time",
-        bookTimeEnd: "End Time",
         bookTerms:
             "I promise to arrive on schedule, respect other guests and maintain the tidiness of library spaces.",
         btnConfirmComplete: "Complete Booking",
@@ -298,7 +192,6 @@ const switchArea = (areaId) => {
 
 // --- 3. ระบบควบคุมการเปิด/ปิด Modals ---
 const modals = ref({
-    login: false,
     rules: false,
     manual: false,
     evaluation: false,
@@ -313,44 +206,32 @@ const closeModal = (name) => {
     modals.value[name] = false;
 };
 
-const swapModal = (closeName, openName) => {
-    closeModal(closeName);
-    openModal(openName);
-};
 
-// --- 4. ข้อมูลฟอร์มและการล็อกอิน (Form States) ---
-const loggedInUser = ref(null);
-const loginForm = ref({
-    username: "",
-    password: "",
-    remember: false,
-});
+// --- 4. การจัดการสถานะ Auth ---
+const page = usePage();
+const authUser = computed(() => page.props.auth?.user ?? null);
 
-const handleLoginSubmit = () => {
-    // จำลองบันทึกผู้ใช้
-    loggedInUser.value = loginForm.value.username;
-    closeModal("login");
+const handleLogout = async () => {
+    const result = await Swal.fire({
+        title: currentLang.value === "th" ? "ออกจากระบบ?" : "Sign Out?",
+        text:
+            currentLang.value === "th"
+                ? "คุณต้องการออกจากระบบใช่หรือไม่"
+                : "Are you sure you want to sign out?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#dc2626",
+        cancelButtonColor: "#64748b",
+        confirmButtonText:
+            currentLang.value === "th" ? "ออกจากระบบ" : "Sign Out",
+        cancelButtonText:
+            currentLang.value === "th" ? "ยกเลิก" : "Cancel",
+        reverseButtons: true,
+    });
 
-    // เคลียร์ค่าฟอร์ม
-    loginForm.value.username = "";
-    loginForm.value.password = "";
-
-    showToast(
-        currentLang.value === "th" ? "เข้าสู่ระบบสำเร็จ" : "Login Successful",
-        currentLang.value === "th"
-            ? `ยินดีต้อนรับรหัสสมาชิก ${loggedInUser.value} เข้าสู่ระบบ`
-            : `Welcome user ${loggedInUser.value}`,
-    );
-};
-
-const handleLogout = () => {
-    loggedInUser.value = null;
-    showToast(
-        currentLang.value === "th" ? "ออกจากระบบแล้ว" : "Logged Out",
-        currentLang.value === "th"
-            ? "คุณได้ออกจากระบบการจองเรียบร้อยแล้ว"
-            : "You have been successfully logged out",
-    );
+    if (result.isConfirmed) {
+        router.post("/logout");
+    }
 };
 
 // --- 5. ข้อมูลการจองห้อง (Booking System) ---
@@ -624,19 +505,19 @@ const hideToast = () => {
                             EN
                         </button>
                     </div>
-                    <div v-if="!loggedInUser">
-                        <button
-                            @click="openModal('login')"
+                    <div v-if="!authUser">
+                        <a
+                            href="/auth/google"
                             class="bg-white hover:bg-blue-950 text-slate-950 hover:text-white font-semibold px-3 py-1 rounded shadow transition-all flex items-center gap-1 text-[11px] md:text-xs"
                         >
-                            <i class="fa-solid fa-right-to-bracket"></i>
+                            <i class="fa-brands fa-google"></i>
                             <span>{{ t("login") }}</span>
-                        </button>
+                        </a>
                     </div>
                     <div v-else class="flex items-center gap-2">
                         <span class="text-xs font-medium text-amber-400">
-                            <i class="fa-solid fa-user"></i>
-                            <span class="ml-1">{{ loggedInUser }}</span>
+                            <i class="fa-solid fa-circle-user"></i>
+                            <span class="ml-1">{{ authUser.name }}</span>
                         </span>
                         <button
                             @click="handleLogout"
@@ -776,928 +657,121 @@ const hideToast = () => {
                 class="flex flex-col gap-2 p-2 mb-8 bg-white border shadow-sm rounded-xl border-slate-200 sm:flex-row"
             >
                 <button
-                    @click="switchArea(1)"
+                    v-for="(loc, i) in locations"
+                    :key="loc.id"
+                    @click="switchArea(i + 1)"
                     :class="
-                        activeArea === 1
+                        activeArea === i + 1
                             ? 'bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500 text-white shadow'
                             : 'text-slate-600 hover:bg-slate-100'
                     "
                     class="flex items-center justify-center flex-1 gap-2 px-4 py-3 text-sm font-bold transition-all rounded-lg"
                 >
-                    <i class="fa-solid fa-graduation-cap"></i>
-                    <span>{{ t("area1") }}</span>
-                </button>
-                <button
-                    @click="switchArea(2)"
-                    :class="
-                        activeArea === 2
-                            ? 'bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500 text-white shadow'
-                            : 'text-slate-600 hover:bg-slate-100'
-                    "
-                    class="flex items-center justify-center flex-1 gap-2 px-4 py-3 text-sm font-bold transition-all rounded-lg"
-                >
-                    <i class="fa-solid fa-laptop-code"></i>
-                    <span>{{ t("area2") }}</span>
-                </button>
-                <button
-                    @click="switchArea(3)"
-                    :class="
-                        activeArea === 3
-                            ? 'bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500 text-white shadow'
-                            : 'text-slate-600 hover:bg-slate-100'
-                    "
-                    class="flex items-center justify-center flex-1 gap-2 px-4 py-3 text-sm font-bold transition-all rounded-lg"
-                >
-                    <i class="fa-solid fa-users-gear"></i>
-                    <span>{{ t("area3") }}</span>
+                    <i class="fa-solid" :class="locationIcons[i]"></i>
+                    <span>{{ locTitle(loc) }}</span>
                 </button>
             </div>
 
-            <!-- โซน 1: อาคารวิทยบริการ (หลัก) -->
-            <div v-show="activeArea === 1" class="space-y-6">
+            <Transition name="tab" mode="out-in">
+            <div :key="activeArea">
+
+            <!-- location section (unified, driven by currentLocation) -->
+            <div class="space-y-6">
                 <div
-                    class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200/60 rounded-xl md:flex-row"
+                    class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r rounded-xl md:flex-row"
+                    :class="currentLocation?.status === '0'
+                        ? 'from-green-50 to-emerald-50 border-green-200/65'
+                        : 'from-red-50 to-orange-50 border-red-200/65'"
                 >
                     <div>
-                        <h3
-                            class="flex items-center gap-2 text-lg font-bold text-blue-950 font-prompt"
-                        >
+                        <h3 class="flex items-center gap-2 text-lg font-bold text-slate-900 font-prompt">
                             <span
-                                class="w-2.5 h-2.5 rounded-full bg-blue-600"
+                                class="w-2.5 h-2.5 rounded-full"
+                                :class="currentLocation?.status === '0' ? 'bg-green-500' : 'bg-red-400'"
                             ></span>
-                            <span>{{ t("area1Title") }}</span>
+                            <span>{{ locTitle(currentLocation) }}</span>
                         </h3>
-                        <p class="mt-1 text-xs text-slate-600">
-                            {{ t("area1Desc") }}
-                        </p>
+                        <p class="mt-1 text-xs text-slate-600">{{ currentLocation?.detail }}</p>
                     </div>
                     <div
-                        class="text-xs text-blue-900 font-bold bg-white px-3 py-1.5 rounded-lg border border-blue-200 shadow-sm"
+                        class="text-xs font-bold bg-white px-3 py-1.5 rounded-lg border shadow-sm"
+                        :class="currentLocation?.status === '0' ? 'text-green-800 border-green-200' : 'text-red-700 border-red-200'"
                     >
                         <i
-                            class="mr-1 text-green-500 fa-solid fa-circle-check"
+                            class="mr-1 fa-solid"
+                            :class="currentLocation?.status === '0' ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500'"
                         ></i>
-                        <span>{{ t("activeArea") }}</span>
+                        <span>{{ currentLocation?.status === '0' ? t("activeArea") : 'ไม่พร้อมใช้งาน' }}</span>
                     </div>
                 </div>
 
                 <div
+                    v-if="currentLocation?.status === '0'"
                     class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
                 >
-                    <!-- ห้อง 1.1 -->
                     <div
+                        v-for="zone in currentZones"
+                        :key="zone.id"
                         class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
                     >
-                        <div class="relative h-48 bg-slate-200">
+                        <div class="relative flex items-center justify-center h-48 bg-slate-100">
                             <img
-                                src="https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&q=80&w=800"
-                                alt="Individual Study"
+                                v-if="zone.pic"
+                                :src="`/imgs/zones/${zone.pic}`"
+                                :alt="zoneTitle(zone)"
                                 class="object-cover w-full h-full"
                             />
-                            <span
-                                class="absolute top-3 left-3 bg-blue-900 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Zone A (Silent)</span
-                            >
+                            <i v-else class="text-5xl text-slate-300 fa-solid fa-image"></i>
+                            <span class="absolute top-3 left-3 text-white text-xs px-2.5 py-1 rounded-full font-bold"
+                                :class="zone.status === '0' ? 'bg-blue-900' : 'bg-red-600'"
+                            >{{ zone.status === '0' ? zoneTitle(zone) : 'ปิดให้บริการ' }}</span>
                         </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
+                        <div class="flex flex-col justify-between flex-grow p-5">
                             <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room1_1") }}</span>
+                                <h4 class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt">
+                                    <span>{{ zoneTitle(zone) }}</span>
                                     <span
-                                        class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusAvailable")
-                                        }}</span></span
-                                    >
+                                        class="text-xs px-2 py-0.5 rounded border"
+                                        :class="zone.status === '0'
+                                            ? 'text-green-600 bg-green-50 border-green-200'
+                                            : 'text-red-600 bg-red-50 border-red-200'"
+                                    ><i class="fa-solid fa-circle text-[6px] mr-1"></i><span>{{ zone.status === '0' ? 'ว่าง' : 'ไม่ว่าง' }}</span></span>
                                 </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room1_1_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
+                                <p class="mb-4 text-xs text-slate-500">{{ zoneDetail(zone) }}</p>
+                                <div class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50">
                                     <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-user mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >1 {{ t("unitPerson") }}</span
-                                        >
+                                        <span><i class="fa-solid fa-users mr-1.5 text-slate-400"></i>ความจุ</span>
+                                        <span class="font-bold">{{ zone.capacity }}</span>
                                     </div>
                                     <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-plug mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >AC Plug, Wi-Fi</span
-                                        >
+                                        <span><i class="fa-solid fa-plug mr-1.5 text-slate-400"></i>สิ่งอำนวยความสะดวก</span>
+                                        <span class="font-bold text-right max-w-[55%]">{{ zone.tool }}</span>
                                     </div>
                                     <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 3 ชม.</span
-                                        >
+                                        <span><i class="fa-solid fa-clock mr-1.5 text-slate-400"></i>โควต้าต่อวัน</span>
+                                        <span class="font-bold">{{ zone.zone_daily_quota ? zone.zone_daily_quota + ' ชม.' : 'ไม่จำกัด' }}</span>
                                     </div>
                                 </div>
                             </div>
                             <button
-                                @click="
-                                    initiateBooking(
-                                        'คอกศึกษาเดี่ยว (Zone A - Booth 1-10)',
-                                    )
-                                "
-                                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
+                                @click="initiateBooking(zoneTitle(zone))"
+                                :disabled="zone.status !== '0'"
+                                :class="zone.status === '0' ? 'bg-blue-900 hover:bg-blue-950 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'"
+                                class="w-full mt-4 font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
                             >
-                                <i class="fa-solid fa-circle-info"></i>
-                                <span>{{ t("btnBook") }}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ห้อง 1.2 -->
-                    <div
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative h-48 bg-slate-200">
-                            <img
-                                src="https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&q=80&w=800"
-                                alt="Study Table"
-                                class="object-cover w-full h-full"
-                            />
-                            <span
-                                class="absolute top-3 left-3 bg-blue-900 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Zone B (Standard)</span
-                            >
-                        </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
-                            <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room1_2") }}</span>
-                                    <span
-                                        class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusAvailable")
-                                        }}</span></span
-                                    >
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room1_2_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-users mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >2 - 4 {{ t("unitPeople") }}</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-plug mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >Power Outlet, Wi-Fi</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 4 ชม.</span
-                                        >
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                @click="
-                                    initiateBooking('โต๊ะรวมกลุ่มเล็ก (Zone B)')
-                                "
-                                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <i class="fa-solid fa-calendar-check"></i>
-                                <span>{{ t("btnBook") }}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ห้อง 1.3 -->
-                    <div
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative h-48 bg-slate-200">
-                            <img
-                                src="https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=800"
-                                alt="Seminar Room"
-                                class="object-cover w-full h-full"
-                            />
-                            <span
-                                class="absolute top-3 left-3 bg-blue-900 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Zone C (Seminar)</span
-                            >
-                        </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
-                            <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room1_3") }}</span>
-                                    <span
-                                        class="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusNearFull")
-                                        }}</span></span
-                                    >
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room1_3_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-users mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >8 - 15 {{ t("unitPeople") }}</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-tv mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >Projector, Whiteboard</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 3 ชม.</span
-                                        >
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                @click="
-                                    initiateBooking(
-                                        'ห้องสัมมนาวิชาการ (Zone C)',
-                                    )
-                                "
-                                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <i class="fa-solid fa-calendar-check"></i>
-                                <span>{{ t("btnBook") }}</span>
+                                <i :class="zone.status === '0' ? 'fa-solid fa-calendar-check' : 'fa-solid fa-ban'"></i>
+                                <span>{{ zone.status === '0' ? t('btnBook') : t('btnUnavailable') }}</span>
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- โซน 2: Co-Working Space (ชั้น 1) -->
-            <div v-show="activeArea === 2" class="space-y-6">
-                <div
-                    class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200/65 rounded-xl md:flex-row"
-                >
-                    <div>
-                        <h3
-                            class="flex items-center gap-2 text-lg font-bold text-slate-900 font-prompt"
-                        >
-                            <span
-                                class="w-2.5 h-2.5 rounded-full bg-orange-500"
-                            ></span>
-                            <span>{{ t("area2Title") }}</span>
-                        </h3>
-                        <p class="mt-1 text-xs text-slate-600">
-                            {{ t("area2Desc") }}
-                        </p>
-                    </div>
-                    <div
-                        class="text-xs text-amber-800 font-bold bg-white px-3 py-1.5 rounded-lg border border-orange-200 shadow-sm"
-                    >
-                        <i
-                            class="mr-1 text-green-500 fa-solid fa-circle-check"
-                        ></i>
-                        <span>{{ t("activeArea") }}</span>
-                    </div>
-                </div>
-
-                <div
-                    class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
-                >
-                    <!-- ห้อง 2.1 -->
-                    <div
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative h-48 bg-slate-200">
-                            <img
-                                src="https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=800"
-                                alt="Idea Hub"
-                                class="object-cover w-full h-full"
-                            />
-                            <span
-                                class="absolute top-3 left-3 bg-orange-500 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Creative Zone</span
-                            >
-                        </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
-                            <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room2_1") }}</span>
-                                    <span
-                                        class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusAvailable")
-                                        }}</span></span
-                                    >
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room2_1_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-users mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >4 - 6 {{ t("unitPeople") }}</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-chalkboard-user mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >Glass Board, Power Outlet</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 4 ชม.</span
-                                        >
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                @click="
-                                    initiateBooking(
-                                        'พื้นที่แลกเปลี่ยนไอเดีย (Idea Hub)',
-                                    )
-                                "
-                                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <i class="fa-solid fa-calendar-check"></i>
-                                <span>{{ t("btnBook") }}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ห้อง 2.2 -->
-                    <div
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative h-48 bg-slate-200">
-                            <img
-                                src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&q=80&w=800"
-                                alt="Mac Suite"
-                                class="object-cover w-full h-full"
-                            />
-                            <span
-                                class="absolute top-3 left-3 bg-orange-500 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Tech Zone</span
-                            >
-                        </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
-                            <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room2_2") }}</span>
-                                    <span
-                                        class="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusNearFull")
-                                        }}</span></span
-                                    >
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room2_2_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-desktop mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >1 {{ t("unitPerson") }}</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-wand-magic-sparkles mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >iMac, Adobe Suite</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 2 ชม.</span
-                                        >
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                @click="
-                                    initiateBooking(
-                                        'มุมบริการคอมพิวเตอร์กราฟิก (Mac Suite)',
-                                    )
-                                "
-                                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <i class="fa-solid fa-calendar-check"></i>
-                                <span>{{ t("btnBook") }}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ห้อง 2.3 -->
-                    <div
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative h-48 bg-slate-200">
-                            <img
-                                src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&q=80&w=800"
-                                alt="Relax Zone"
-                                class="object-cover w-full h-full"
-                            />
-                            <span
-                                class="absolute top-3 left-3 bg-orange-500 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Relax Zone</span
-                            >
-                        </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
-                            <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room2_3") }}</span>
-                                    <span
-                                        class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusAvailable")
-                                        }}</span></span
-                                    >
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room2_3_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-user mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >1 {{ t("unitPerson") }}</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-chair mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >Beanbag, Coffee Table</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 2 ชม.</span
-                                        >
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                @click="
-                                    initiateBooking(
-                                        'พื้นที่พักผ่อนและอ่านข่าวสาร (Relax & Read)',
-                                    )
-                                "
-                                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <i class="fa-solid fa-calendar-check"></i>
-                                <span>{{ t("btnBook") }}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
             </div>
-
-            <!-- โซน 3: ห้องศึกษาค้นคว้ากลุ่ม (ชั้น 3-4) -->
-            <div v-show="activeArea === 3" class="space-y-6">
-                <div
-                    class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r from-green-50 to-emerald-50 border-green-200/65 rounded-xl md:flex-row"
-                >
-                    <div>
-                        <h3
-                            class="flex items-center gap-2 text-lg font-bold text-slate-900 font-prompt"
-                        >
-                            <span
-                                class="w-2.5 h-2.5 rounded-full bg-green-500"
-                            ></span>
-                            <span>{{ t("area3Title") }}</span>
-                        </h3>
-                        <p class="mt-1 text-xs text-slate-600">
-                            {{ t("area3Desc") }}
-                        </p>
-                    </div>
-                    <div
-                        class="text-xs text-green-800 font-bold bg-white px-3 py-1.5 rounded-lg border border-green-200 shadow-sm"
-                    >
-                        <i
-                            class="mr-1 text-green-500 fa-solid fa-circle-check"
-                        ></i>
-                        <span>{{ t("activeArea") }}</span>
-                    </div>
-                </div>
-
-                <div
-                    class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
-                >
-                    <!-- ห้อง 3.1 -->
-                    <div
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative h-48 bg-slate-200">
-                            <img
-                                src="https://images.unsplash.com/photo-1431540015161-0bf868a2d407?auto=format&fit=crop&q=80&w=800"
-                                alt="Group Study Medium"
-                                class="object-cover w-full h-full"
-                            />
-                            <span
-                                class="absolute top-3 left-3 bg-green-600 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Room Size M</span
-                            >
-                        </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
-                            <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room3_1") }}</span>
-                                    <span
-                                        class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusAvailable")
-                                        }}</span></span
-                                    >
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room3_1_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-users mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >4 - 6 {{ t("unitPeople") }}</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-wind mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >Air Condition, Whiteboard</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 3 ชม.</span
-                                        >
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                @click="
-                                    initiateBooking(
-                                        'ห้องศึกษากลุ่มย่อย (Group Room M - ชั้น 3)',
-                                    )
-                                "
-                                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <i class="fa-solid fa-calendar-check"></i>
-                                <span>{{ t("btnBook") }}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ห้อง 3.2 -->
-                    <div
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative h-48 bg-slate-200">
-                            <img
-                                src="https://images.unsplash.com/photo-1542744094-3a31f103e35f?auto=format&fit=crop&q=80&w=800"
-                                alt="Group Study Large"
-                                class="object-cover w-full h-full"
-                            />
-                            <span
-                                class="absolute top-3 left-3 bg-green-600 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Room Size L</span
-                            >
-                        </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
-                            <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room3_2") }}</span>
-                                    <span
-                                        class="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusNearFull")
-                                        }}</span></span
-                                    >
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room3_2_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-users mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >6 - 12 {{ t("unitPeople") }}</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-tv mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >Smart TV, Whiteboard, A/C</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 3 ชม.</span
-                                        >
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                @click="
-                                    initiateBooking(
-                                        'ห้องศึกษากลุ่มใหญ่ (Group Room L - ชั้น 4)',
-                                    )
-                                "
-                                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <i class="fa-solid fa-calendar-check"></i>
-                                <span>{{ t("btnBook") }}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ห้อง 3.3 -->
-                    <div
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative h-48 bg-slate-200">
-                            <img
-                                src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=800"
-                                alt="Special Presentation Room"
-                                class="object-cover w-full h-full"
-                            />
-                            <span
-                                class="absolute top-3 left-3 bg-green-600 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                >Room Size XL</span
-                            >
-                        </div>
-                        <div
-                            class="flex flex-col justify-between flex-grow p-5"
-                        >
-                            <div>
-                                <h4
-                                    class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt"
-                                >
-                                    <span>{{ t("room3_3") }}</span>
-                                    <span
-                                        class="text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200"
-                                        ><i
-                                            class="fa-solid fa-circle text-[6px] mr-1"
-                                        ></i
-                                        ><span>{{
-                                            t("statusBusy")
-                                        }}</span></span
-                                    >
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">
-                                    {{ t("room3_3_desc") }}
-                                </p>
-                                <div
-                                    class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50"
-                                >
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-users mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("capacity") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >10 - 20 {{ t("unitPeople") }}</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-film mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("facilities") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >Projector, Sound System, A/C</span
-                                        >
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span
-                                            ><i
-                                                class="fa-solid fa-clock mr-1.5 text-slate-400"
-                                            ></i>
-                                            {{ t("maxTime") }}</span
-                                        >
-                                        <span class="font-bold"
-                                            >สูงสุด 4 ชม.</span
-                                        >
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                disabled
-                                class="w-full bg-slate-300 text-slate-500 font-bold py-2 px-4 rounded-lg text-xs cursor-not-allowed flex items-center justify-center gap-1.5"
-                            >
-                                <i class="fa-solid fa-ban"></i>
-                                <span>{{ t("btnUnavailable") }}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            </Transition>
         </main>
+
+        
 
         <!-- ข้อมูลสถิติของห้องสมุดภาพรวม -->
         <section
@@ -1900,9 +974,10 @@ const hideToast = () => {
         <!-- ================= MODALS SECTION ================= -->
 
         <!-- 1. คุกกี้ ยอมรับนโยบายความเป็นส่วนตัว (Cookie Consent Bar) -->
+        <Transition name="fade">
         <div
             v-if="showCookieConsent"
-            class="fixed inset-x-0 bottom-0 z-50 p-4 text-white transition-all duration-500 border-t shadow-2xl bg-slate-900/95 backdrop-blur-md border-slate-800"
+            class="fixed inset-x-0 bottom-0 z-50 p-4 text-white border-t shadow-2xl bg-slate-900/95 backdrop-blur-md border-slate-800"
         >
             <div
                 class="flex flex-col items-center justify-between gap-4 mx-auto max-w-7xl md:flex-row"
@@ -1944,100 +1019,10 @@ const hideToast = () => {
                 </div>
             </div>
         </div>
+        </Transition>
 
-        <!-- 2. ป๊อปอัพเข้าสู่ระบบ (Login Modal) -->
-        <div
-            v-show="modals.login"
-            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
-        >
-            <div
-                class="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-2xl border-slate-200"
-            >
-                <div
-                    class="flex items-center justify-between p-5 text-white bg-blue-900"
-                >
-                    <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-lock text-amber-400"></i>
-                        <h3 class="text-sm font-bold font-prompt md:text-base">
-                            {{ t("loginHeader") }}
-                        </h3>
-                    </div>
-                    <button
-                        @click="closeModal('login')"
-                        class="transition-colors text-slate-300 hover:text-white"
-                    >
-                        <i class="text-lg fa-solid fa-xmark"></i>
-                    </button>
-                </div>
-                <form @submit.prevent="handleLoginSubmit" class="p-6 space-y-4">
-                    <p class="text-xs leading-relaxed text-slate-500">
-                        {{ t("loginNotice") }}
-                    </p>
-                    <div>
-                        <label
-                            class="block mb-1 text-xs font-bold text-slate-700"
-                            >{{ t("loginUsernameLabel") }}</label
-                        >
-                        <div class="relative">
-                            <span
-                                class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"
-                                ><i class="text-xs fa-solid fa-user"></i
-                            ></span>
-                            <input
-                                v-model="loginForm.username"
-                                type="text"
-                                placeholder="64010912345"
-                                required
-                                class="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <label
-                            class="block mb-1 text-xs font-bold text-slate-700"
-                            >{{ t("loginPasswordLabel") }}</label
-                        >
-                        <div class="relative">
-                            <span
-                                class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"
-                                ><i class="text-xs fa-solid fa-key"></i
-                            ></span>
-                            <input
-                                v-model="loginForm.password"
-                                type="password"
-                                placeholder="••••••••"
-                                required
-                                class="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                            />
-                        </div>
-                    </div>
-                    <div
-                        class="flex items-center justify-between text-[11px] text-slate-500 pt-1"
-                    >
-                        <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input
-                                v-model="loginForm.remember"
-                                type="checkbox"
-                                class="text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                            />
-                            <span>{{ t("rememberMe") }}</span>
-                        </label>
-                        <a href="#" class="text-blue-600 hover:underline">{{
-                            t("forgotPassword")
-                        }}</a>
-                    </div>
-                    <button
-                        type="submit"
-                        class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-2.5 rounded-lg text-xs shadow-md transition-all mt-2 flex items-center justify-center gap-2"
-                    >
-                        <i class="fa-solid fa-right-to-bracket"></i>
-                        <span>{{ t("loginBtnSubmit") }}</span>
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        <!-- 3. ป๊อปอัพ ข้อปฏิบัติการใช้งาน (Rules Modal) -->
+        <!-- 2. ป๊อปอัพ ข้อปฏิบัติการใช้งาน (Rules Modal) -->
+        <Transition name="fade">
         <div
             v-show="modals.rules"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -2105,8 +1090,10 @@ const hideToast = () => {
                 </div>
             </div>
         </div>
+        </Transition>
 
         <!-- 4. ป๊อปอัพ คู่มือการใช้งาน (Manual Modal) -->
+        <Transition name="fade">
         <div
             v-show="modals.manual"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -2216,8 +1203,10 @@ const hideToast = () => {
                 </div>
             </div>
         </div>
+        </Transition>
 
         <!-- 5. ป๊อปอัพ แบบประเมินความพึงพอใจ (Evaluation Modal) -->
+        <Transition name="fade">
         <div
             v-show="modals.evaluation"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -2372,8 +1361,10 @@ const hideToast = () => {
                 </form>
             </div>
         </div>
+        </Transition>
 
         <!-- 6. ป๊อปอัพยืนยันการทำรายการจอง (Booking Confirmation Modal) -->
+        <Transition name="fade">
         <div
             v-show="modals.booking"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -2421,7 +1412,7 @@ const hideToast = () => {
 
                     <!-- แจ้งเตือนถ้ายังไม่ล็อกอิน -->
                     <div
-                        v-if="!loggedInUser"
+                        v-if="!authUser"
                         class="bg-orange-50 border border-orange-200 text-orange-800 text-xs p-3.5 rounded-lg flex items-start gap-2"
                     >
                         <i
@@ -2429,16 +1420,13 @@ const hideToast = () => {
                         ></i>
                         <div>
                             <span>{{ t("bookingLoginAlert") }}</span>
-                            <button
-                                type="button"
-                                @click="swapModal('booking', 'login')"
-                                class="text-blue-900 hover:underline font-bold block mt-1.5"
+                            <a
+                                href="/auth/google"
+                                class="text-blue-900 hover:underline font-bold flex items-center gap-1 mt-1.5"
                             >
-                                <i
-                                    class="mr-1 fa-solid fa-right-to-bracket"
-                                ></i>
-                                คลิกเพื่อเข้าสู่ระบบที่นี่
-                            </button>
+                                <i class="fa-brands fa-google"></i>
+                                เข้าสู่ระบบด้วย Google
+                            </a>
                         </div>
                     </div>
 
@@ -2626,48 +1614,36 @@ const hideToast = () => {
                 </form>
             </div>
         </div>
+        </Transition>
 
         <!-- 7. แจ้งเตือน (Toast Notification) -->
-        <div
-            :class="
-                toast.show
-                    ? 'translate-x-0 opacity-100'
-                    : 'translate-x-96 opacity-0'
-            "
-            class="fixed z-50 flex items-start w-full max-w-sm gap-3 p-4 transition-all duration-300 bg-white border-l-4 shadow-2xl top-6 right-6 rounded-xl"
-            style="border-color: var(--border-color)"
-            :style="{ '--border-color': toast.isError ? '#ef4444' : '#22c55e' }"
-        >
+        <Transition name="fade">
             <div
-                :class="
-                    toast.isError
-                        ? 'bg-red-100 text-red-600'
-                        : 'bg-green-100 text-green-600'
-                "
-                class="p-2 rounded-full mt-0.5"
+                v-if="toast.show"
+                class="fixed z-50 flex items-start w-full max-w-sm gap-3 p-4 bg-white border-l-4 shadow-2xl top-6 right-6 rounded-xl"
+                :style="{ borderLeftColor: toast.isError ? '#ef4444' : '#22c55e' }"
             >
-                <i
-                    :class="
-                        toast.isError
-                            ? 'fa-solid fa-circle-xmark'
-                            : 'fa-solid fa-circle-check'
-                    "
-                    class="text-lg"
-                ></i>
+                <div
+                    :class="toast.isError ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'"
+                    class="p-2 rounded-full mt-0.5"
+                >
+                    <i
+                        :class="toast.isError ? 'fa-solid fa-circle-xmark' : 'fa-solid fa-circle-check'"
+                        class="text-lg"
+                    ></i>
+                </div>
+                <div class="flex-grow">
+                    <h4 class="text-sm font-bold text-slate-900 font-prompt">{{ toast.title }}</h4>
+                    <p class="text-xs text-slate-500 mt-0.5">{{ toast.desc }}</p>
+                </div>
+                <button
+                    @click="hideToast"
+                    class="transition-colors text-slate-400 hover:text-slate-600"
+                >
+                    <i class="text-sm fa-solid fa-xmark"></i>
+                </button>
             </div>
-            <div class="flex-grow">
-                <h4 class="text-sm font-bold text-slate-900 font-prompt">
-                    {{ toast.title }}
-                </h4>
-                <p class="text-xs text-slate-500 mt-0.5">{{ toast.desc }}</p>
-            </div>
-            <button
-                @click="hideToast"
-                class="transition-colors text-slate-400 hover:text-slate-600"
-            >
-                <i class="text-sm fa-solid fa-xmark"></i>
-            </button>
-        </div>
+        </Transition>
     </div>
 </template>
 

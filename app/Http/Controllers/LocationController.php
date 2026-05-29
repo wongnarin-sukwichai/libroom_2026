@@ -13,7 +13,10 @@ class LocationController extends Controller
     public function index()
     {
         $data = Location::select('id', 'title', 'title_eng', 'detail', 'status')
-            ->with(['zones' => fn($q) => $q->select('id', 'loc_id', 'pic', 'title', 'title_eng', 'detail', 'capacity', 'tool', 'zone_daily_quota', 'status')])
+            ->with(['zones' => fn($q) => $q
+                ->select('id', 'loc_id', 'pic', 'title', 'title_eng', 'detail', 'capacity', 'tool', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'status')
+                ->with(['rooms' => fn($r) => $r->select('id', 'zone_id', 'title', 'detail', 'pic', 'confirm_type')])
+            ])
             ->get();
 
         return inertia('Welcome', [
