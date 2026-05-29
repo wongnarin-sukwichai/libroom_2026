@@ -10,12 +10,8 @@ class HolidaySeeder extends Seeder
     public function run(): void
     {
         Holiday::updateOrCreate(
-            [
-                'd' => '1',
-                'm'      => '1',
-                'detail'    => 'วันหยุดปีใหม่',
-                'owner'      => '1',
-            ]
+            ['d' => '1', 'm' => '1'],
+            ['detail' => 'วันหยุดปีใหม่', 'owner' => 1]
         );
     }
 }

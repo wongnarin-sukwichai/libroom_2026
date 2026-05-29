@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class RoomTool extends Model
 {
+    protected $table = 'roomtools';
+
     protected $fillable = ['room_id', 'tool_id', 'quantity', 'status', 'note'];
 
     public function tool()

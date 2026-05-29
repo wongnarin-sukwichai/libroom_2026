@@ -2,10 +2,11 @@
 
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Auth\GoogleController;
+use App\Http\Controllers\LocationController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', fn() => Inertia::render('Welcome'))->name('welcome');
+Route::get('/', [LocationController::class, 'index'])->name('welcome');
 
 Route::get('/dashboard', fn() => Inertia::render('Dashboard'))
     ->middleware('auth:admin')

@@ -9,7 +9,7 @@ class Member extends Authenticatable
 {
     use Notifiable;
 
-    protected $table = 'table_members';
+    protected $table = 'members';
 
     protected $fillable = [
         'google_id',

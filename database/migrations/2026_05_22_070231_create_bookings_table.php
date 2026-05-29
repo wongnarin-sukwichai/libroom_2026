@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('table_bookings', function (Blueprint $table) {
+        Schema::create('bookings', function (Blueprint $table) {
             $table->id();
             $table->integer('group_id');   // ← FK → table_booking_groups
             $table->integer('user_id');    // ← FK → users (แทน email/name/surname)
@@ -26,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('table_bookings');
+        Schema::dropIfExists('bookings');
     }
 };

@@ -17,9 +17,11 @@ class DatabaseSeeder extends Seeder
         $this->call(AdminSeeder::class);
         $this->call(MemberSeeder::class);
         $this->call(HolidaySeeder::class);
-        $this->call(LocationSeeder::class);
-        $this->call(RoomSeeder::class);
         $this->call(TimeSeeder::class);
+        $this->call(LocationSeeder::class);
         $this->call(ZoneSeeder::class);
+        $this->call(ToolSeeder::class);
+        $this->call(RoomSeeder::class);
+        $this->call(RoomtoolSeeder::class);
     }
 }

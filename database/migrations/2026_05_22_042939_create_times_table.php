@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('table_times', function (Blueprint $table) {
+        Schema::create('times', function (Blueprint $table) {
             $table->id();
             $table->string('title');
             $table->integer('total')->comment('จำนวนเวลาทั้งหมด');
@@ -29,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('table_times');
+        Schema::dropIfExists('times');
     }
 };

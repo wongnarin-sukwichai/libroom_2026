@@ -9,8 +9,6 @@ class MemberSeeder extends Seeder
 {
     public function run(): void
     {
-        Member::updateOrCreate(
-
-        );
+        // members ถูกสร้างอัตโนมัติเมื่อ login ด้วย Google OAuth ครั้งแรก
     }
 }
