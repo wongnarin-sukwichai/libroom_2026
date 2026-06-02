@@ -1,6 +1,6 @@
 <script setup>
 import { usePage, router } from "@inertiajs/vue3";
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 
 const props = defineProps({
     locations: Array,
@@ -235,115 +235,59 @@ const handleLogout = async () => {
 };
 
 // --- 5. ข้อมูลการจองห้อง (Booking System) ---
-const selectedRoomName = ref("");
-
-const timeSlots = [
-    { id: 0, start: "08:00", end: "09:00", label: "08-09" },
-    { id: 1, start: "09:00", end: "10:00", label: "09-10" },
-    { id: 2, start: "10:00", end: "11:00", label: "10-11" },
-    { id: 3, start: "11:00", end: "12:00", label: "11-12" },
-    { id: 4, start: "12:00", end: "13:00", label: "12-13" },
-    { id: 5, start: "13:00", end: "14:00", label: "13-14" },
-    { id: 6, start: "14:00", end: "15:00", label: "14-15" },
-    { id: 7, start: "15:00", end: "16:00", label: "15-16" },
-    { id: 8, start: "16:00", end: "17:00", label: "16-17" },
-    { id: 9, start: "17:00", end: "18:00", label: "17-18" },
-    { id: 10, start: "18:00", end: "19:00", label: "18-19" },
-    { id: 11, start: "19:00", end: "20:00", label: "19-20" },
-    { id: 12, start: "20:00", end: "21:00", label: "20-21" },
-];
+const selectedZone = ref(null);
+const selectedRoom = ref(null);
+const availableTimes = ref([]);
+const bookedTimeIds = ref([]);
+const isFetchingSlots = ref(false);
 
 const bookingForm = ref({
     date: "",
-    selectedSlots: [],
+    selectedTimeId: null,
     terms: false,
 });
 
-// Mock: slots booked by others for this room/date (จาก API จริง)
-const bookedSlotIds = ref([2, 7]);
+const minDate = computed(() => new Date().toISOString().split("T")[0]);
 
-// Mock: ชั่วโมงที่ user จองไปแล้ววันนี้ (จาก API จริง)
-const quotaUsedToday = ref(1);
-
-const quotaRemaining = computed(
-    () => 3 - quotaUsedToday.value - bookingForm.value.selectedSlots.length,
-);
-
-const initiateBooking = (roomName) => {
-    selectedRoomName.value = roomName;
-    const today = new Date().toISOString().split("T")[0];
-    bookingForm.value.date = today;
-    bookingForm.value.selectedSlots = [];
-    bookingForm.value.terms = false;
+const initiateBooking = (zone) => {
+    selectedZone.value = zone;
+    selectedRoom.value = zone.rooms?.length === 1 ? zone.rooms[0] : null;
+    bookingForm.value = { date: new Date().toISOString().split("T")[0], selectedTimeId: null, terms: false };
+    availableTimes.value = [];
+    bookedTimeIds.value = [];
     openModal("booking");
 };
 
-const minDate = computed(() => new Date().toISOString().split("T")[0]);
+const fetchSlots = async () => {
+    if (!selectedRoom.value || !bookingForm.value.date) return;
+    isFetchingSlots.value = true;
+    try {
+        const res = await fetch(`/rooms/${selectedRoom.value.id}/slots?date=${bookingForm.value.date}`);
+        const data = await res.json();
+        availableTimes.value = data.times;
+        bookedTimeIds.value = data.booked_ids;
+        bookingForm.value.selectedTimeId = null;
+    } finally {
+        isFetchingSlots.value = false;
+    }
+};
 
-const getSlotState = (slotId) => {
-    if (bookedSlotIds.value.includes(slotId)) return "booked";
-    if (bookingForm.value.selectedSlots.includes(slotId)) return "selected";
+watch([selectedRoom, () => bookingForm.value.date], () => fetchSlots());
+
+const getSlotState = (timeId) => {
+    if (bookedTimeIds.value.includes(timeId)) return "booked";
+    if (bookingForm.value.selectedTimeId === timeId) return "selected";
     return "available";
 };
 
-const toggleSlot = (slotId) => {
-    if (bookedSlotIds.value.includes(slotId)) return;
-
-    const selected = [...bookingForm.value.selectedSlots].sort((a, b) => a - b);
-
-    if (selected.includes(slotId)) {
-        // คลิก slot ที่เลือกอยู่: ถ้าเป็นปลาย trim ออก ถ้าตรงกลาง reset
-        if (slotId === selected[0]) {
-            bookingForm.value.selectedSlots = selected.slice(1);
-        } else if (slotId === selected[selected.length - 1]) {
-            bookingForm.value.selectedSlots = selected.slice(0, -1);
-        } else {
-            bookingForm.value.selectedSlots = [];
-        }
-        return;
-    }
-
-    if (selected.length === 0) {
-        bookingForm.value.selectedSlots = [slotId];
-        return;
-    }
-
-    const first = selected[0];
-    const last = selected[selected.length - 1];
-    let newSelected;
-
-    if (slotId === last + 1) {
-        newSelected = [...selected, slotId];
-    } else if (slotId === first - 1) {
-        newSelected = [slotId, ...selected];
-    } else {
-        // ไม่ต่อเนื่อง: reset ไปเริ่มใหม่
-        bookingForm.value.selectedSlots = [slotId];
-        return;
-    }
-
-    if (newSelected.length + quotaUsedToday.value > 3) {
-        showToast(
-            currentLang.value === "th" ? "โควต้าวันนี้เต็มแล้ว" : "Daily Quota Reached",
-            currentLang.value === "th"
-                ? `คุณจองได้อีกเพียง ${3 - quotaUsedToday.value - selected.length} ชั่วโมงในวันนี้`
-                : `You can only book ${3 - quotaUsedToday.value - selected.length} more hour(s) today.`,
-            true,
-        );
-        return;
-    }
-
-    bookingForm.value.selectedSlots = newSelected;
+const selectSlot = (timeId) => {
+    if (bookedTimeIds.value.includes(timeId)) return;
+    bookingForm.value.selectedTimeId = bookingForm.value.selectedTimeId === timeId ? null : timeId;
 };
 
 const bookingSummary = computed(() => {
-    const selected = [...bookingForm.value.selectedSlots].sort((a, b) => a - b);
-    if (selected.length === 0) return null;
-    return {
-        start: timeSlots[selected[0]].start,
-        end: timeSlots[selected[selected.length - 1]].end,
-        hours: selected.length,
-    };
+    if (!bookingForm.value.selectedTimeId) return null;
+    return availableTimes.value.find(t => t.id === bookingForm.value.selectedTimeId) ?? null;
 });
 
 const handleBookingSubmit = () => {
@@ -363,8 +307,8 @@ const handleBookingSubmit = () => {
     showToast(
         currentLang.value === "th" ? "ทำการจองสำเร็จ!" : "Reservation Complete!",
         currentLang.value === "th"
-            ? `จอง ${selectedRoomName.value} วันที่ ${bookingForm.value.date} เวลา ${bookingSummary.value.start}–${bookingSummary.value.end} น. (${bookingSummary.value.hours} ชม.) สำเร็จ!`
-            : `Reserved ${selectedRoomName.value} on ${bookingForm.value.date} from ${bookingSummary.value.start} to ${bookingSummary.value.end} (${bookingSummary.value.hours} hr).`,
+            ? `จอง ${selectedRoom.value.title} วันที่ ${bookingForm.value.date} เวลา ${bookingSummary.value.start}–${bookingSummary.value.end} น.`
+            : `Reserved ${selectedRoom.value.title} on ${bookingForm.value.date} from ${bookingSummary.value.start} to ${bookingSummary.value.end}.`,
     );
 };
 
@@ -754,7 +698,7 @@ const hideToast = () => {
                                 </div>
                             </div>
                             <button
-                                @click="initiateBooking(zoneTitle(zone))"
+                                @click="initiateBooking(zone)"
                                 :disabled="zone.status !== '0'"
                                 :class="zone.status === '0' ? 'bg-blue-900 hover:bg-blue-950 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'"
                                 class="w-full mt-4 font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
@@ -1369,75 +1313,111 @@ const hideToast = () => {
             v-show="modals.booking"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
         >
-            <div
-                class="w-full max-w-lg overflow-hidden bg-white border shadow-2xl rounded-2xl border-slate-200"
-            >
-                <div
-                    class="flex items-center justify-between p-5 text-white bg-blue-900"
-                >
+            <div class="w-full max-w-lg overflow-hidden bg-white border shadow-2xl rounded-2xl border-slate-200">
+                <!-- Header -->
+                <div class="flex items-center justify-between p-5 text-white bg-blue-900">
                     <div class="flex items-center gap-2">
-                        <i
-                            class="fa-solid fa-calendar-check text-amber-400"
-                        ></i>
+                        <i class="fa-solid fa-calendar-check text-amber-400"></i>
                         <h3 class="text-sm font-bold font-prompt md:text-base">
-                            {{ t("bookConfirmHeader") }}
+                            {{ selectedRoom ? t("bookConfirmHeader") : "เลือกห้องที่ต้องการจอง" }}
                         </h3>
                     </div>
-                    <button
-                        @click="closeModal('booking')"
-                        class="transition-colors text-slate-300 hover:text-white"
-                    >
+                    <button @click="closeModal('booking')" class="transition-colors text-slate-300 hover:text-white">
                         <i class="text-lg fa-solid fa-xmark"></i>
                     </button>
                 </div>
-                <form
-                    @submit.prevent="handleBookingSubmit"
-                    class="p-6 space-y-4 max-h-[80vh] overflow-y-auto"
-                >
-                    <!-- ชื่อห้องที่กำลังจอง -->
-                    <div
-                        class="p-3.5 border bg-slate-50 border-slate-200 rounded-xl"
-                    >
-                        <div
-                            class="text-[10px] text-slate-400 font-bold uppercase tracking-wider"
-                        >
-                            {{ t("bookingRoomLabel") }}
-                        </div>
-                        <div
-                            class="font-bold text-blue-900 text-sm md:text-base pt-0.5"
-                        >
-                            {{ selectedRoomName }}
-                        </div>
+
+                <div class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                    <!-- Zone name badge -->
+                    <div class="p-3 border bg-slate-50 border-slate-200 rounded-xl">
+                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">พื้นที่</div>
+                        <div class="font-bold text-blue-900 text-sm pt-0.5">{{ selectedZone ? zoneTitle(selectedZone) : '' }}</div>
                     </div>
 
                     <!-- แจ้งเตือนถ้ายังไม่ล็อกอิน -->
-                    <div
-                        v-if="!authUser"
-                        class="bg-orange-50 border border-orange-200 text-orange-800 text-xs p-3.5 rounded-lg flex items-start gap-2"
-                    >
-                        <i
-                            class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"
-                        ></i>
+                    <div v-if="!authUser" class="bg-orange-50 border border-orange-200 text-orange-800 text-xs p-3.5 rounded-lg flex items-start gap-2">
+                        <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
                         <div>
                             <span>{{ t("bookingLoginAlert") }}</span>
-                            <a
-                                href="/auth/google"
-                                class="text-blue-900 hover:underline font-bold flex items-center gap-1 mt-1.5"
-                            >
+                            <a href="/auth/google" class="text-blue-900 hover:underline font-bold flex items-center gap-1 mt-1.5">
                                 <i class="fa-brands fa-google"></i>
                                 เข้าสู่ระบบด้วย Google
                             </a>
                         </div>
                     </div>
 
-                    <!-- ฟอร์มจองสำหรับ user ที่ล็อกอินแล้ว -->
-                    <div v-else class="space-y-4">
+                    <!-- Step 1: เลือกห้อง (ถ้า zone มีหลายห้อง) -->
+                    <div v-else-if="!selectedRoom" class="space-y-2">
+                        <p class="text-xs font-bold text-slate-700">
+                            <i class="fa-solid fa-door-open mr-1.5 text-slate-400"></i>
+                            เลือกห้องที่ต้องการจอง
+                        </p>
+                        <button
+                            v-for="room in selectedZone?.rooms"
+                            :key="room.id"
+                            @click="room.status !== '1' && (selectedRoom = room)"
+                            :disabled="room.status === '1'"
+                            :class="room.status === '1'
+                                ? 'opacity-60 cursor-not-allowed border-slate-200 bg-slate-50'
+                                : 'hover:border-blue-400 hover:bg-blue-50 cursor-pointer'"
+                            class="w-full text-left p-3.5 border border-slate-200 rounded-xl transition-all"
+                        >
+                            <!-- แถวหัว: ชื่อห้อง + badge สถานะ -->
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="font-bold text-sm text-slate-900">{{ room.title }}</div>
+                                <span
+                                    :class="{
+                                        'bg-red-100 text-red-700 border-red-200':          room.status === '1',
+                                        'bg-orange-100 text-orange-700 border-orange-200':  room.status !== '1' && room.confirm_type === 'manual',
+                                        'bg-emerald-100 text-emerald-700 border-emerald-200': room.status !== '1' && room.confirm_type === 'auto',
+                                    }"
+                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0"
+                                >
+                                    <template v-if="room.status === '1'">
+                                        <i class="fa-solid fa-circle-xmark mr-0.5"></i>ไม่ว่าง
+                                    </template>
+                                    <template v-else-if="room.confirm_type === 'manual'">
+                                        <i class="fa-solid fa-clock mr-0.5"></i>รอเจ้าหน้าที่ยืนยัน
+                                    </template>
+                                    <template v-else>
+                                        <i class="fa-solid fa-circle-check mr-0.5"></i>ยืนยันอัตโนมัติ
+                                    </template>
+                                </span>
+                            </div>
+                            <!-- รายละเอียดห้อง -->
+                            <div v-if="room.detail" class="text-xs text-slate-500 mt-0.5">{{ room.detail }}</div>
+                            <!-- roomtools badges -->
+                            <div v-if="room.tools?.length" class="mt-1.5 flex flex-wrap gap-1">
+                                <span
+                                    v-for="rt in room.tools"
+                                    :key="rt.id"
+                                    class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+                                >
+                                    <i v-if="rt.tool?.icon" :class="`fa-solid ${rt.tool.icon} text-[9px]`"></i>
+                                    {{ rt.tool?.name }}<template v-if="rt.quantity > 1"> ×{{ rt.quantity }}</template>
+                                </span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <!-- Step 2: เลือกวันและเวลา -->
+                    <form v-else @submit.prevent="handleBookingSubmit" class="space-y-4">
+                        <!-- ชื่อห้องที่เลือก -->
+                        <div class="flex items-center gap-2">
+                            <button type="button" @click="selectedRoom = null; availableTimes = []"
+                                v-if="selectedZone?.rooms?.length > 1"
+                                class="text-xs text-blue-700 hover:underline flex items-center gap-1">
+                                <i class="fa-solid fa-chevron-left"></i> เปลี่ยนห้อง
+                            </button>
+                            <div class="text-xs font-bold text-slate-700">
+                                <i class="fa-solid fa-door-open mr-1 text-slate-400"></i>
+                                {{ selectedRoom?.title }}
+                            </div>
+                        </div>
+
                         <!-- เลือกวันที่ -->
                         <div>
-                            <label
-                                class="block mb-1 text-xs font-bold text-slate-700"
-                                >{{ t("bookDate") }}</label
-                            >
+                            <label class="block mb-1 text-xs font-bold text-slate-700">{{ t("bookDate") }}</label>
                             <input
                                 v-model="bookingForm.date"
                                 type="date"
@@ -1447,171 +1427,88 @@ const hideToast = () => {
                             />
                         </div>
 
-                        <!-- แถบโควต้าวันนี้ -->
-                        <div
-                            class="p-3 border rounded-lg bg-slate-50 border-slate-200"
-                        >
-                            <div
-                                class="flex items-center justify-between mb-2"
-                            >
-                                <span class="text-xs font-bold text-slate-700"
-                                    ><i
-                                        class="fa-solid fa-hourglass-half mr-1.5 text-slate-400"
-                                    ></i
-                                    >โควต้าวันนี้</span
-                                >
-                                <span
-                                    :class="
-                                        quotaUsedToday +
-                                            bookingForm.selectedSlots.length >=
-                                        3
-                                            ? 'text-red-600'
-                                            : 'text-blue-700'
-                                    "
-                                    class="text-xs font-bold"
-                                    >{{
-                                        quotaUsedToday +
-                                        bookingForm.selectedSlots.length
-                                    }}/3 ชั่วโมง</span
-                                >
-                            </div>
-                            <div class="flex gap-1.5">
-                                <div
-                                    v-for="i in 3"
-                                    :key="i"
-                                    :class="
-                                        i <= quotaUsedToday
-                                            ? 'bg-slate-400'
-                                            : i <=
-                                                quotaUsedToday +
-                                                    bookingForm.selectedSlots
-                                                        .length
-                                              ? 'bg-blue-500'
-                                              : 'bg-slate-200'
-                                    "
-                                    class="h-2.5 flex-1 rounded-full transition-all duration-300"
-                                ></div>
-                            </div>
-                            <p class="mt-1.5 text-[10px] text-slate-400">
-                                <i class="mr-1 fa-solid fa-circle-info"></i>
-                                จองได้อีก {{ quotaRemaining }} ชั่วโมงในวันนี้
-                            </p>
-                        </div>
-
-                        <!-- กริด Time Slot -->
+                        <!-- กริด Time Slot จาก DB -->
                         <div>
-                            <div
-                                class="flex items-center justify-between mb-2"
-                            >
-                                <label
-                                    class="text-xs font-bold text-slate-700"
-                                    >เลือกช่วงเวลา
-                                    <span
-                                        class="font-normal text-slate-400"
-                                        >(คลิกต่อเนื่อง)</span
-                                    ></label
-                                >
-                                <div
-                                    class="flex items-center gap-3 text-[10px] text-slate-500"
-                                >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-xs font-bold text-slate-700">เลือกช่วงเวลา</label>
+                                <div class="flex items-center gap-3 text-[10px] text-slate-500">
                                     <span class="flex items-center gap-1">
-                                        <span
-                                            class="inline-block w-3 h-3 bg-blue-600 rounded"
-                                        ></span>
-                                        เลือก
+                                        <span class="inline-block w-3 h-3 bg-blue-600 rounded"></span>เลือก
                                     </span>
                                     <span class="flex items-center gap-1">
-                                        <span
-                                            class="inline-block w-3 h-3 bg-red-200 rounded"
-                                        ></span>
-                                        ไม่ว่าง
+                                        <span class="inline-block w-3 h-3 bg-red-200 rounded"></span>ไม่ว่าง
                                     </span>
                                 </div>
                             </div>
-                            <div
-                                class="grid grid-cols-4 gap-1.5 sm:grid-cols-5"
-                            >
+
+                            <!-- Loading -->
+                            <div v-if="isFetchingSlots" class="py-6 text-center text-xs text-slate-400">
+                                <i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังโหลดช่วงเวลา...
+                            </div>
+
+                            <!-- ไม่มีข้อมูล -->
+                            <div v-else-if="!availableTimes.length && bookingForm.date"
+                                class="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                                <i class="fa-solid fa-calendar-xmark mr-1"></i> ไม่มีช่วงเวลาให้บริการในวันนี้
+                            </div>
+
+                            <!-- Slot Grid -->
+                            <div v-else-if="availableTimes.length" class="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
                                 <button
-                                    v-for="slot in timeSlots"
-                                    :key="slot.id"
+                                    v-for="time in availableTimes"
+                                    :key="time.id"
                                     type="button"
-                                    @click="toggleSlot(slot.id)"
-                                    :disabled="
-                                        getSlotState(slot.id) === 'booked'
-                                    "
+                                    @click="selectSlot(time.id)"
+                                    :disabled="getSlotState(time.id) === 'booked'"
                                     :class="{
-                                        'bg-blue-600 border-blue-700 text-white font-bold shadow-sm':
-                                            getSlotState(slot.id) === 'selected',
-                                        'bg-red-50 border-red-200 text-red-400 cursor-not-allowed line-through':
-                                            getSlotState(slot.id) === 'booked',
-                                        'bg-white border-slate-200 text-slate-600 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700':
-                                            getSlotState(slot.id) === 'available',
+                                        'bg-blue-600 border-blue-700 text-white font-bold shadow-sm': getSlotState(time.id) === 'selected',
+                                        'bg-red-50 border-red-200 text-red-400 cursor-not-allowed line-through': getSlotState(time.id) === 'booked',
+                                        'bg-white border-slate-200 text-slate-600 hover:border-blue-400 hover:bg-blue-50': getSlotState(time.id) === 'available',
                                     }"
                                     class="px-1 py-2.5 text-[11px] border rounded-lg text-center transition-all leading-tight font-medium"
                                 >
-                                    {{ slot.label }}
+                                    {{ time.start }}–{{ time.end }}
                                 </button>
+                            </div>
+
+                            <!-- รอเลือกวันก่อน -->
+                            <div v-else class="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                                <i class="fa-regular fa-calendar mr-1"></i> เลือกวันที่ก่อนเพื่อดูช่วงเวลาว่าง
                             </div>
                         </div>
 
                         <!-- สรุปช่วงเวลาที่เลือก -->
-                        <div
-                            v-if="bookingSummary"
-                            class="flex items-center gap-3 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900"
-                        >
-                            <i
-                                class="text-base text-blue-500 fa-solid fa-clock shrink-0"
-                            ></i>
+                        <div v-if="bookingSummary" class="flex items-center gap-3 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
+                            <i class="text-base text-blue-500 fa-solid fa-clock shrink-0"></i>
                             <div>
-                                <div class="font-bold">
-                                    {{ bookingSummary.start }} –
-                                    {{ bookingSummary.end }} น.
-                                </div>
-                                <div class="text-blue-600 mt-0.5">
-                                    รวม {{ bookingSummary.hours }} ชั่วโมง
-                                </div>
+                                <div class="font-bold">{{ bookingSummary.start }} – {{ bookingSummary.end }} น.</div>
+                                <div class="text-blue-600 mt-0.5">{{ bookingSummary.title }}</div>
                             </div>
                         </div>
-                        <div
-                            v-else
-                            class="p-3 text-center text-[11px] text-slate-400 border border-dashed border-slate-200 rounded-lg"
-                        >
+                        <div v-else class="p-3 text-center text-[11px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
                             <i class="mr-1 fa-regular fa-hand-pointer"></i>
-                            ยังไม่ได้เลือกช่วงเวลา — คลิก slot ที่ต้องการ
+                            ยังไม่ได้เลือกช่วงเวลา
                         </div>
 
                         <!-- Checkbox ยอมรับเงื่อนไข -->
-                        <label
-                            class="flex items-start gap-2 pt-1 cursor-pointer"
-                        >
-                            <input
-                                v-model="bookingForm.terms"
-                                type="checkbox"
-                                required
-                                class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5"
-                            />
-                            <span
-                                class="text-[11px] text-slate-500 leading-normal"
-                                >{{ t("bookTerms") }}</span
-                            >
+                        <label class="flex items-start gap-2 pt-1 cursor-pointer">
+                            <input v-model="bookingForm.terms" type="checkbox" required
+                                class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5" />
+                            <span class="text-[11px] text-slate-500 leading-normal">{{ t("bookTerms") }}</span>
                         </label>
 
                         <!-- ปุ่มยืนยัน -->
                         <button
                             type="submit"
                             :disabled="!bookingSummary"
-                            :class="
-                                bookingSummary
-                                    ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
-                                    : 'bg-slate-300 cursor-not-allowed'
-                            "
+                            :class="bookingSummary ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer' : 'bg-slate-300 cursor-not-allowed'"
                             class="w-full text-white font-bold py-2.5 rounded-lg text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
                         >
                             <i class="fa-solid fa-circle-check"></i>
                             <span>{{ t("btnConfirmComplete") }}</span>
                         </button>
-                    </div>
-                </form>
+                    </form>
+                </div>
             </div>
         </div>
         </Transition>

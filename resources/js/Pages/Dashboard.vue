@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { usePage, router } from "@inertiajs/vue3";
 import Swal from "sweetalert2";
 import type { AdminUser, Booking, Room, Member, Holiday, ServiceDay, Feedback } from "../types/admin";
@@ -144,9 +144,7 @@ const feedbacks = ref<Feedback[]>([
 ]);
 
 // Computed stats
-const pendingCount = computed(
-    () => bookings.value.filter((b) => b.status === "pending").length,
-);
+const pendingCount = ref(0);
 const baseApproved = ref(24);
 const approvedCount = computed(
     () => baseApproved.value + bookings.value.filter((b) => b.status === "approved").length,
@@ -208,6 +206,139 @@ const deleteHoliday = (id: number) => {
     holidays.value = holidays.value.filter((h) => h.id !== id);
     showToast("ลบวันหยุดแล้ว", "อัปเดตตารางวันหยุดเรียบร้อย", false);
 };
+
+// ─── Staff Booking Modal ───────────────────────────────────────────────────
+interface SBRoom   { id: number; title: string; detail: string; confirm_type: 'auto' | 'manual'; status: '0' | '1' }
+interface SBZone   { id: number; title: string; title_eng: string; rooms: SBRoom[] }
+interface SBLoc    { id: number; title: string; title_eng: string; zones: SBZone[] }
+interface SBSlot   { id: number; start: string; end: string; title: string }
+
+const showStaffBooking   = ref(false);
+const sbLocations        = ref<SBLoc[]>([]);
+const sbLoading          = ref(false);
+const sbActiveLoc        = ref<SBLoc | null>(null);
+const sbSelectedRoom     = ref<SBRoom | null>(null);
+const sbDate             = ref('');
+const sbTimes            = ref<SBSlot[]>([]);
+const sbBookedIds        = ref<number[]>([]);
+const sbSelectedTimeIds  = ref<number[]>([]);
+const sbFetchingSlots    = ref(false);
+
+// ── Calendar ─────────────────────────────────────────────────────────────
+const sbCalYear  = ref(new Date().getFullYear());
+const sbCalMonth = ref(new Date().getMonth());
+const sbTodayStr = new Date().toISOString().split('T')[0];
+const thMonths   = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+const sbMonthLabel = computed(() => `${thMonths[sbCalMonth.value]} ${sbCalYear.value + 543}`);
+
+const sbCalDays = computed(() => {
+    const y = sbCalYear.value, m = sbCalMonth.value;
+    const firstDow    = new Date(y, m, 1).getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const cells: Array<{ date: string; day: number } | null> = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++)
+        cells.push({ date: `${y}-${pad(m + 1)}-${pad(d)}`, day: d });
+    return cells;
+});
+
+function sbPrevMonth() {
+    if (sbCalMonth.value === 0) { sbCalMonth.value = 11; sbCalYear.value--; }
+    else sbCalMonth.value--;
+}
+function sbNextMonth() {
+    if (sbCalMonth.value === 11) { sbCalMonth.value = 0; sbCalYear.value++; }
+    else sbCalMonth.value++;
+}
+function sbPickDate(date: string) {
+    if (date < sbTodayStr) return;
+    sbDate.value = date;
+    sbSelectedTimeIds.value = [];
+}
+// ─────────────────────────────────────────────────────────────────────────
+
+const openStaffBooking = async () => {
+    showStaffBooking.value   = true;
+    sbLoading.value          = true;
+    sbActiveLoc.value        = null;
+    sbSelectedRoom.value     = null;
+    sbDate.value             = sbTodayStr;
+    sbTimes.value            = [];
+    sbBookedIds.value        = [];
+    sbSelectedTimeIds.value  = [];
+    sbCalYear.value          = new Date().getFullYear();
+    sbCalMonth.value         = new Date().getMonth();
+    try {
+        const res         = await fetch('/api/locations');
+        sbLocations.value = await res.json();
+        if (sbLocations.value.length) sbActiveLoc.value = sbLocations.value[0];
+    } finally {
+        sbLoading.value = false;
+    }
+};
+
+const sbFetchSlots = async () => {
+    if (!sbSelectedRoom.value || !sbDate.value) return;
+    sbFetchingSlots.value = true;
+    try {
+        const res             = await fetch(`/rooms/${sbSelectedRoom.value.id}/slots?date=${sbDate.value}`);
+        const data            = await res.json();
+        sbTimes.value         = data.times;
+        sbBookedIds.value     = data.booked_ids;
+        sbSelectedTimeIds.value = [];
+    } finally {
+        sbFetchingSlots.value = false;
+    }
+};
+
+watch([sbSelectedRoom, sbDate], () => {
+    if (sbSelectedRoom.value && sbDate.value) sbFetchSlots();
+});
+
+const sbSlotState = (id: number) => {
+    if (sbBookedIds.value.includes(id)) return 'booked';
+    if (sbSelectedTimeIds.value.includes(id)) return 'selected';
+    return 'available';
+};
+
+const sbSelectSlot = (id: number) => {
+    if (sbBookedIds.value.includes(id)) return;
+    const ids = [...sbSelectedTimeIds.value].sort((a, b) => a - b);
+    if (ids.includes(id)) {
+        if (id === ids[ids.length - 1]) sbSelectedTimeIds.value = ids.slice(0, -1);
+        else if (id === ids[0])         sbSelectedTimeIds.value = ids.slice(1);
+        else                            sbSelectedTimeIds.value = ids.slice(0, ids.indexOf(id));
+        return;
+    }
+    if (!ids.length) { sbSelectedTimeIds.value = [id]; return; }
+    const min = ids[0], max = ids[ids.length - 1];
+    if (id === max + 1) { sbSelectedTimeIds.value = [...ids, id]; return; }
+    if (id === min - 1) { sbSelectedTimeIds.value = [id, ...ids]; return; }
+    sbSelectedTimeIds.value = [id]; // non-consecutive → reset
+};
+
+const sbSummary = computed(() => {
+    const ids = [...sbSelectedTimeIds.value].sort((a, b) => a - b);
+    if (!ids.length) return null;
+    const pad = (h: number) => String(h).padStart(2, '0');
+    return {
+        start: `${pad(ids[0])}:00`,
+        end:   `${pad(ids[ids.length - 1] + 1)}:00`,
+        hours: ids.length,
+    };
+});
+
+const sbSubmit = () => {
+    if (!sbSummary.value) return;
+    showToast(
+        'จองสำเร็จ (เจ้าหน้าที่)',
+        `${sbSelectedRoom.value!.title} • ${sbDate.value} • ${sbSummary.value.start}–${sbSummary.value.end} น. (${sbSummary.value.hours} ชม.)`,
+    );
+    showStaffBooking.value = false;
+};
+// ──────────────────────────────────────────────────────────────────────────
 
 const logoutAdmin = async () => {
     const result = await Swal.fire({
@@ -546,31 +677,26 @@ const logoutAdmin = async () => {
                             :total-rooms="rooms.length"
                             :total-members="members.length"
                         />
-                        <Bookings
-                            v-else-if="currentTab === 'bookings'"
-                            :bookings="bookings"
-                            :pending-count="pendingCount"
-                            @update-status="updateBookingStatus"
-                        />
+                        <div v-else-if="currentTab === 'bookings'" class="space-y-4">
+                            <div class="flex justify-end">
+                                <button
+                                    @click="openStaffBooking"
+                                    class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition-all"
+                                >
+                                    <i class="fa-solid fa-calendar-plus"></i>
+                                    จองห้องสำหรับเจ้าหน้าที่
+                                    <span class="bg-white/20 text-[10px] px-1.5 py-0.5 rounded font-bold">auto</span>
+                                </button>
+                            </div>
+                            <Bookings @pending-count="pendingCount = $event" />
+                        </div>
                         <Members
                             v-else-if="currentTab === 'members'"
                             :members="members"
                         />
-                        <Rooms
-                            v-else-if="currentTab === 'rooms'"
-                            :rooms="rooms"
-                            @toggle-room="toggleRoom"
-                        />
-                        <Holidays
-                            v-else-if="currentTab === 'holidays'"
-                            :holidays="holidays"
-                            @delete-holiday="deleteHoliday"
-                        />
-                        <ServiceHours
-                            v-else-if="currentTab === 'service_hours'"
-                            :service-hours="serviceHours"
-                            @toggle-day="toggleServiceDay"
-                        />
+                        <Rooms v-else-if="currentTab === 'rooms'" />
+                        <Holidays v-else-if="currentTab === 'holidays'" />
+                        <ServiceHours v-else-if="currentTab === 'service_hours'" />
                         <Reports
                             v-else-if="currentTab === 'reports'"
                             :feedbacks="feedbacks"
@@ -589,6 +715,158 @@ const logoutAdmin = async () => {
                 ระบบบริการจองพื้นที่ออนไลน์ (MSU Library System v2)
             </footer>
         </div>
+
+        <!-- Staff Booking Modal -->
+        <Transition name="fade">
+        <div v-if="showStaffBooking"
+            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+            @click.self="showStaffBooking = false">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <!-- Header -->
+                <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-calendar-plus text-indigo-500"></i>
+                        <h3 class="text-sm font-bold text-slate-900">จองห้องสำหรับเจ้าหน้าที่</h3>
+                        <span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">auto</span>
+                    </div>
+                    <button @click="showStaffBooking = false" class="text-slate-400 hover:text-slate-700">
+                        <i class="fa-solid fa-xmark text-base"></i>
+                    </button>
+                </div>
+
+                <div class="p-5 space-y-4">
+                    <!-- Loading -->
+                    <div v-if="sbLoading" class="py-8 text-center text-xs text-slate-400">
+                        <i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังโหลด...
+                    </div>
+
+                    <template v-else>
+                        <!-- Location tabs -->
+                        <div class="flex gap-2 flex-wrap">
+                            <button
+                                v-for="loc in sbLocations" :key="loc.id"
+                                @click="sbActiveLoc = loc; sbSelectedRoom = null; sbTimes = []; sbSelectedTimeId = null"
+                                :class="sbActiveLoc?.id === loc.id
+                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-400'"
+                                class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all"
+                            >{{ loc.title }}</button>
+                        </div>
+
+                        <!-- Zone + Room list -->
+                        <div v-if="sbActiveLoc" class="space-y-3">
+                            <div v-for="zone in sbActiveLoc.zones" :key="zone.id">
+                                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{{ zone.title }}</p>
+                                <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                                    <button
+                                        v-for="room in zone.rooms" :key="room.id"
+                                        @click="room.status !== '1' && (sbSelectedRoom = room)"
+                                        :disabled="room.status === '1'"
+                                        :class="sbSelectedRoom?.id === room.id
+                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                            : room.status === '1'
+                                                ? 'opacity-50 cursor-not-allowed border-slate-200'
+                                                : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'"
+                                        class="text-left text-xs p-2.5 border rounded-xl transition-all"
+                                    >
+                                        <div class="font-bold leading-tight">{{ room.title }}</div>
+                                        <div v-if="room.detail" class="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{{ room.detail }}</div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Date + Slots (แสดงเมื่อเลือกห้องแล้ว) -->
+                        <template v-if="sbSelectedRoom">
+                            <!-- Calendar -->
+                            <div class="border border-slate-200 rounded-xl overflow-hidden">
+                                <!-- Nav -->
+                                <div class="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
+                                    <button @click="sbPrevMonth" class="p-1 rounded hover:bg-slate-200 transition-colors text-slate-500">
+                                        <i class="fa-solid fa-chevron-left text-[10px]"></i>
+                                    </button>
+                                    <span class="text-xs font-bold text-slate-700">{{ sbMonthLabel }}</span>
+                                    <button @click="sbNextMonth" class="p-1 rounded hover:bg-slate-200 transition-colors text-slate-500">
+                                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                                    </button>
+                                </div>
+                                <!-- Day-of-week headers -->
+                                <div class="grid grid-cols-7 text-center bg-slate-50 border-b border-slate-100">
+                                    <span v-for="d in ['อา','จ','อ','พ','พฤ','ศ','ส']" :key="d"
+                                        class="text-[10px] font-bold text-slate-400 py-1">{{ d }}</span>
+                                </div>
+                                <!-- Days -->
+                                <div class="grid grid-cols-7 p-1.5 gap-0.5">
+                                    <template v-for="(cell, i) in sbCalDays" :key="i">
+                                        <div v-if="!cell" class="h-7"></div>
+                                        <button v-else @click="sbPickDate(cell.date)"
+                                            :disabled="cell.date < sbTodayStr"
+                                            :class="{
+                                                'bg-indigo-600 text-white font-bold': sbDate === cell.date,
+                                                'bg-indigo-50 text-indigo-700 font-bold ring-1 ring-indigo-300': cell.date === sbTodayStr && sbDate !== cell.date,
+                                                'text-slate-300 cursor-not-allowed': cell.date < sbTodayStr,
+                                                'hover:bg-indigo-50 text-slate-700': cell.date >= sbTodayStr && sbDate !== cell.date,
+                                            }"
+                                            class="h-7 w-full text-[11px] rounded-lg transition-all">
+                                            {{ cell.day }}
+                                        </button>
+                                    </template>
+                                </div>
+                                <div v-if="sbDate" class="px-3 py-2 border-t border-slate-100 text-[11px] text-center text-indigo-600 font-semibold bg-indigo-50">
+                                    เลือก: {{ sbDate }}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-xs font-bold text-slate-700">เลือกช่วงเวลา</label>
+                                    <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                                        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-indigo-600 rounded"></span>เลือก</span>
+                                        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-red-200 rounded"></span>ไม่ว่าง</span>
+                                    </div>
+                                </div>
+                                <div v-if="sbFetchingSlots" class="py-5 text-center text-xs text-slate-400">
+                                    <i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังโหลด...
+                                </div>
+                                <div v-else-if="sbTimes.length" class="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                                    <button v-for="slot in sbTimes" :key="slot.id" type="button"
+                                        @click="sbSelectSlot(slot.id)"
+                                        :disabled="sbBookedIds.includes(slot.id)"
+                                        :class="{
+                                            'bg-indigo-600 border-indigo-700 text-white font-bold': sbSlotState(slot.id) === 'selected',
+                                            'bg-red-50 border-red-200 text-red-400 cursor-not-allowed line-through': sbSlotState(slot.id) === 'booked',
+                                            'bg-white border-slate-200 text-slate-600 hover:border-indigo-400 hover:bg-indigo-50': sbSlotState(slot.id) === 'available',
+                                        }"
+                                        class="px-1 py-2.5 text-[11px] border rounded-lg text-center transition-all font-medium"
+                                    >{{ slot.start }}–{{ slot.end }}</button>
+                                </div>
+                                <div v-else-if="sbDate" class="py-5 text-center text-xs text-slate-400 border border-dashed rounded-lg">
+                                    ไม่มีช่วงเวลาให้บริการในวันนี้
+                                </div>
+                            </div>
+
+                            <!-- Summary + Submit -->
+                            <div v-if="sbSummary" class="flex items-center gap-3 p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900">
+                                <i class="text-base text-indigo-400 fa-solid fa-clock shrink-0"></i>
+                                <div class="flex-1">
+                                    <div class="font-bold">{{ sbSelectedRoom.title }} — {{ sbSummary.start }} – {{ sbSummary.end }} น.</div>
+                                    <div class="text-indigo-500 mt-0.5">{{ sbDate }} • {{ sbSummary.hours }} ชั่วโมง</div>
+                                </div>
+                            </div>
+                            <button
+                                @click="sbSubmit"
+                                :disabled="!sbSummary"
+                                :class="sbSummary ? 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer' : 'bg-slate-300 cursor-not-allowed'"
+                                class="w-full text-white font-bold py-2.5 rounded-lg text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
+                            >
+                                <i class="fa-solid fa-circle-check"></i> ยืนยันการจอง
+                            </button>
+                        </template>
+                    </template>
+                </div>
+            </div>
+        </div>
+        </Transition>
 
         <!-- Toast -->
         <Transition name="fade">

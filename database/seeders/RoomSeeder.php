@@ -157,7 +157,10 @@ class RoomSeeder extends Seeder
             ['zone' => 'Library Space (ชั้น 2)', 'title' => 'ห้องคาราโอเกะ-01', 'detail' => 'ห้องร้องคาราโอเกะ มีระบบเสียงและจอแสดงเนื้อเพลง', 'confirm_type' => 'manual'],
             ['zone' => 'Library Space (ชั้น 2)', 'title' => 'ห้องคาราโอเกะ-02', 'detail' => 'ห้องร้องคาราโอเกะ มีระบบเสียงและจอแสดงเนื้อเพลง', 'confirm_type' => 'manual'],
             ['zone' => 'Library Space (ชั้น 2)', 'title' => 'ห้องคาราโอเกะ-03', 'detail' => 'ห้องร้องคาราโอเกะ มีระบบเสียงและจอแสดงเนื้อเพลง', 'confirm_type' => 'manual'],
-            
+    
+            //Meeting MSU Space — ห้องประชุม, manual (min_capacity=2)
+            ['zone' => 'Meeting MSU Space (ชั้น 2)', 'title' => 'Meeting Space-01', 'detail' => 'ห้องอบรมขนาดใหญ่ รองรับผู้เข้าร่วมได้สูงสุด 10 คน พร้อมปลั๊กไฟ', 'confirm_type' => 'manual'],
+
         ];
 
         foreach ($data as $r) {
@@ -169,6 +172,7 @@ class RoomSeeder extends Seeder
                 [
                     'detail'       => $r['detail'],
                     'confirm_type' => $r['confirm_type'],
+                    'status'       => '0',
                 ]
             );
         }

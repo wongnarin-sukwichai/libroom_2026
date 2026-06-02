@@ -126,6 +126,14 @@ class RoomtoolSeeder extends Seeder
                 ['name' => 'เครื่องเสียง',   'qty' => 1],
                 ['name' => 'ไมค์, ไมค์ลอย',  'qty' => 2],
             ],
+
+            'Meeting MSU Space (ชั้น 2)' => [
+                ['name' => 'โต๊ะ',      'qty' => 2],
+                ['name' => 'เก้าอี้',        'qty' => 10],
+                ['name' => 'Wi-Fi',          'qty' => 1],
+                ['name' => 'เครื่องปรับอากาศ',   'qty' => 2],
+                ['name' => 'ปลั๊กไฟ',  'qty' => 1],
+            ],
         ];
 
         foreach ($zoneSets as $zoneTitle => $tools) {

@@ -3,7 +3,9 @@ import { usePage, router } from "@inertiajs/vue3";
 import { ref, computed, onMounted, watch } from "vue";
 
 const props = defineProps({
-    locations: Array,
+    locations:      Array,
+    todayIsHoliday: { type: Boolean, default: false },
+    todayDate:      { type: String,  default: () => new Date().toISOString().split('T')[0] },
 });
 
 // คืนชื่อ location ตามภาษาปัจจุบัน
@@ -242,19 +244,20 @@ const bookedTimeIds = ref([]);
 const isFetchingSlots = ref(false);
 
 const bookingForm = ref({
-    date: "",
-    selectedTimeId: null,
-    terms: false,
+    date:            "",
+    selectedTimeIds: [],
+    terms:           false,
 });
-
-const minDate = computed(() => new Date().toISOString().split("T")[0]);
+const usedHoursToday = ref(0);
+const dailyQuota     = ref(3);
 
 const initiateBooking = (zone) => {
     selectedZone.value = zone;
     selectedRoom.value = zone.rooms?.length === 1 ? zone.rooms[0] : null;
-    bookingForm.value = { date: new Date().toISOString().split("T")[0], selectedTimeId: null, terms: false };
+    bookingForm.value  = { date: props.todayDate, selectedTimeIds: [], terms: false };
     availableTimes.value = [];
-    bookedTimeIds.value = [];
+    bookedTimeIds.value  = [];
+    usedHoursToday.value = 0;
     openModal("booking");
 };
 
@@ -262,54 +265,137 @@ const fetchSlots = async () => {
     if (!selectedRoom.value || !bookingForm.value.date) return;
     isFetchingSlots.value = true;
     try {
-        const res = await fetch(`/rooms/${selectedRoom.value.id}/slots?date=${bookingForm.value.date}`);
+        const res  = await fetch(`/rooms/${selectedRoom.value.id}/slots?date=${bookingForm.value.date}`);
         const data = await res.json();
-        availableTimes.value = data.times;
-        bookedTimeIds.value = data.booked_ids;
-        bookingForm.value.selectedTimeId = null;
+        availableTimes.value              = data.times;
+        bookedTimeIds.value               = data.booked_ids;
+        usedHoursToday.value              = data.used_hours  ?? 0;
+        dailyQuota.value                  = data.daily_quota ?? 3;
+        bookingForm.value.selectedTimeIds = [];
     } finally {
         isFetchingSlots.value = false;
     }
 };
 
-watch([selectedRoom, () => bookingForm.value.date], () => fetchSlots());
+watch(selectedRoom, () => fetchSlots());
+
+const totalQuota = computed(() => dailyQuota.value);
+const quota      = computed(() => Math.max(0, totalQuota.value - usedHoursToday.value));
 
 const getSlotState = (timeId) => {
-    if (bookedTimeIds.value.includes(timeId)) return "booked";
-    if (bookingForm.value.selectedTimeId === timeId) return "selected";
-    return "available";
+    if (bookedTimeIds.value.includes(timeId)) return 'booked';
+
+    const ids = bookingForm.value.selectedTimeIds;
+    if (ids.includes(timeId)) return 'selected';
+
+    if (ids.length >= quota.value) return 'dim';
+
+    // ถ้ามี selection อยู่แล้ว → dim slot ที่ไม่ต่อเนื่อง
+    if (ids.length > 0) {
+        const sorted = [...ids].sort((a, b) => a - b);
+        const min = sorted[0], max = sorted[sorted.length - 1];
+        if (timeId !== min - 1 && timeId !== max + 1) return 'dim';
+    }
+
+    return 'available';
 };
 
 const selectSlot = (timeId) => {
     if (bookedTimeIds.value.includes(timeId)) return;
-    bookingForm.value.selectedTimeId = bookingForm.value.selectedTimeId === timeId ? null : timeId;
-};
 
-const bookingSummary = computed(() => {
-    if (!bookingForm.value.selectedTimeId) return null;
-    return availableTimes.value.find(t => t.id === bookingForm.value.selectedTimeId) ?? null;
-});
+    const ids    = [...bookingForm.value.selectedTimeIds].sort((a, b) => a - b);
+    const q      = quota.value;
 
-const handleBookingSubmit = () => {
-    if (!bookingSummary.value) {
-        showToast(
-            currentLang.value === "th" ? "กรุณาเลือกช่วงเวลา" : "Please Select Time Slots",
-            currentLang.value === "th"
-                ? "คุณต้องเลือกอย่างน้อย 1 ช่วงเวลาก่อนยืนยันการจอง"
-                : "Please select at least one time slot.",
-            true,
-        );
+    if (ids.includes(timeId)) {
+        if (timeId === ids[ids.length - 1]) {
+            bookingForm.value.selectedTimeIds = ids.slice(0, -1);
+        } else if (timeId === ids[0]) {
+            bookingForm.value.selectedTimeIds = ids.slice(1);
+        } else {
+            bookingForm.value.selectedTimeIds = ids.slice(0, ids.indexOf(timeId));
+        }
         return;
     }
 
-    closeModal("booking");
+    if (ids.length === 0) { bookingForm.value.selectedTimeIds = [timeId]; return; }
 
-    showToast(
-        currentLang.value === "th" ? "ทำการจองสำเร็จ!" : "Reservation Complete!",
-        currentLang.value === "th"
-            ? `จอง ${selectedRoom.value.title} วันที่ ${bookingForm.value.date} เวลา ${bookingSummary.value.start}–${bookingSummary.value.end} น.`
-            : `Reserved ${selectedRoom.value.title} on ${bookingForm.value.date} from ${bookingSummary.value.start} to ${bookingSummary.value.end}.`,
-    );
+    const min = ids[0], max = ids[ids.length - 1];
+
+    if (timeId === max + 1 && ids.length < q) {
+        bookingForm.value.selectedTimeIds = [...ids, timeId]; return;
+    }
+    if (timeId === min - 1 && ids.length < q) {
+        bookingForm.value.selectedTimeIds = [timeId, ...ids]; return;
+    }
+
+    // non-adjacent หรือ quota เต็ม → reset
+    bookingForm.value.selectedTimeIds = [timeId];
+};
+
+const pad = (h) => String(h).padStart(2, '0');
+
+const bookingSummary = computed(() => {
+    const ids = [...bookingForm.value.selectedTimeIds].sort((a, b) => a - b);
+    if (!ids.length) return null;
+    const start = ids[0], end = ids[ids.length - 1];
+    return {
+        ids,
+        start: `${pad(start)}:00`,
+        end:   `${pad(end + 1)}:00`,
+        hours: ids.length,
+        title: `${pad(start)}:00 – ${pad(end + 1)}:00 น.`,
+    };
+});
+
+const isSubmitting = ref(false);
+
+const handleBookingSubmit = async () => {
+    if (!bookingSummary.value || isSubmitting.value) return;
+
+    isSubmitting.value = true;
+    try {
+        const res = await fetch('/bookings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '',
+            },
+            body: JSON.stringify({
+                room_id:  selectedRoom.value.id,
+                time_ids: bookingForm.value.selectedTimeIds,
+            }),
+        });
+
+        const json = await res.json();
+
+        if (!res.ok) {
+            showToast(
+                currentLang.value === 'th' ? 'ไม่สามารถจองได้' : 'Booking Failed',
+                json.message ?? 'เกิดข้อผิดพลาด',
+                true,
+            );
+            return;
+        }
+
+        closeModal('booking');
+
+        const isAuto = json.confirm_type === 'auto';
+        showToast(
+            currentLang.value === 'th' ? 'จองสำเร็จ!' : 'Booking Complete!',
+            currentLang.value === 'th'
+                ? `${selectedRoom.value.title} • ${bookingSummary.value.start}–${bookingSummary.value.end} น. (${bookingSummary.value.hours} ชม.) ${isAuto ? '✓ ยืนยันแล้ว' : '— รอเจ้าหน้าที่ยืนยัน'}`
+                : `${selectedRoom.value.title} • ${bookingSummary.value.start}–${bookingSummary.value.end} (${bookingSummary.value.hours}h)`,
+        );
+
+        // refresh slots เพื่ออัปเดต slot ที่เพิ่งจองให้ขึ้น "ไม่ว่าง"
+        await fetchSlots();
+
+    } catch {
+        showToast('เกิดข้อผิดพลาด', 'กรุณาลองใหม่อีกครั้ง', true);
+    } finally {
+        isSubmitting.value = false;
+    }
 };
 
 // --- 6. ฟอร์มประเมินความพึงพอใจ ---
@@ -463,6 +549,11 @@ const hideToast = () => {
                             <i class="fa-solid fa-circle-user"></i>
                             <span class="ml-1">{{ authUser.name }}</span>
                         </span>
+                        <a href="/my-bookings"
+                            class="bg-white/20 hover:bg-white/30 text-white px-2 py-0.5 rounded text-[10px] transition-all flex items-center gap-1">
+                            <i class="fa-solid fa-calendar-check"></i>
+                            <span>การจองของฉัน</span>
+                        </a>
                         <button
                             @click="handleLogout"
                             class="bg-red-600 hover:bg-red-700 text-white px-2 py-0.5 rounded text-[10px] transition-all"
@@ -596,6 +687,19 @@ const hideToast = () => {
                 </p>
             </div>
 
+            <!-- แบนเนอร์วันหยุด -->
+            <div v-if="props.todayIsHoliday"
+                class="max-w-2xl mx-auto mb-8 flex items-center gap-4 p-4 bg-red-50 border border-red-200 rounded-2xl shadow-sm"
+            >
+                <div class="flex items-center justify-center w-12 h-12 shrink-0 bg-red-100 rounded-xl">
+                    <i class="fa-solid fa-calendar-xmark text-xl text-red-500"></i>
+                </div>
+                <div>
+                    <div class="font-bold text-sm text-red-700">งดให้บริการเนื่องในวันหยุดและวันหยุดนักขัตฤกษ์</div>
+                    <div class="text-xs text-red-500 mt-0.5">ไม่สามารถจองใช้บริการได้ในวันนี้ กรุณากลับมาจองในวันทำการถัดไป</div>
+                </div>
+            </div>
+
             <!-- แท็บสลับพื้นที่การดูข้อมูล -->
             <div
                 class="flex flex-col gap-2 p-2 mb-8 bg-white border shadow-sm rounded-xl border-slate-200 sm:flex-row"
@@ -620,7 +724,7 @@ const hideToast = () => {
             <div :key="activeArea">
 
             <!-- location section (unified, driven by currentLocation) -->
-            <div class="space-y-6">
+            <div v-if="!props.todayIsHoliday" class="space-y-6">
                 <div
                     class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r rounded-xl md:flex-row"
                     :class="currentLocation?.status === '0'
@@ -1334,6 +1438,16 @@ const hideToast = () => {
                         <div class="font-bold text-blue-900 text-sm pt-0.5">{{ selectedZone ? zoneTitle(selectedZone) : '' }}</div>
                     </div>
 
+                    <!-- แบนเนอร์วันหยุด (แสดงทันทีก่อนทุกขั้นตอน) -->
+                    <div v-if="props.todayIsHoliday"
+                        class="flex items-start gap-3 p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800">
+                        <i class="fa-solid fa-calendar-xmark text-base text-red-500 mt-0.5 shrink-0"></i>
+                        <div>
+                            <div class="text-xs font-bold">งดให้บริการวันนี้เนื่องในวันหยุดและวันหยุดนักขัตฤกษ์</div>
+                            <div class="text-[11px] text-red-500 mt-0.5">ไม่สามารถจองใช้บริการได้ในวันนี้ กรุณากลับมาจองในวันทำการถัดไป</div>
+                        </div>
+                    </div>
+
                     <!-- แจ้งเตือนถ้ายังไม่ล็อกอิน -->
                     <div v-if="!authUser" class="bg-orange-50 border border-orange-200 text-orange-800 text-xs p-3.5 rounded-lg flex items-start gap-2">
                         <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
@@ -1355,14 +1469,47 @@ const hideToast = () => {
                         <button
                             v-for="room in selectedZone?.rooms"
                             :key="room.id"
-                            @click="selectedRoom = room"
-                            class="w-full text-left p-3.5 border border-slate-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all"
+                            @click="room.status !== '1' && (selectedRoom = room)"
+                            :disabled="room.status === '1'"
+                            :class="room.status === '1'
+                                ? 'opacity-60 cursor-not-allowed border-slate-200 bg-slate-50'
+                                : 'hover:border-blue-400 hover:bg-blue-50 cursor-pointer'"
+                            class="w-full text-left p-3.5 border border-slate-200 rounded-xl transition-all"
                         >
-                            <div class="font-bold text-sm text-slate-900">{{ room.title }}</div>
+                            <!-- แถวหัว: ชื่อห้อง + badge สถานะ -->
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="font-bold text-sm text-slate-900">{{ room.title }}</div>
+                                <span
+                                    :class="{
+                                        'bg-red-100 text-red-700 border-red-200':      room.status === '1',
+                                        'bg-amber-100 text-amber-700 border-amber-200': room.status !== '1' && room.confirm_type === 'manual',
+                                        'bg-sky-100 text-sky-700 border-sky-200':       room.status !== '1' && room.confirm_type === 'auto',
+                                    }"
+                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0"
+                                >
+                                    <template v-if="room.status === '1'">
+                                        <i class="fa-solid fa-circle-xmark mr-0.5"></i>ไม่ว่าง
+                                    </template>
+                                    <template v-else-if="room.confirm_type === 'manual'">
+                                        <i class="fa-solid fa-user-check mr-0.5"></i>ติดต่อเจ้าหน้าที่เพื่อยืนยัน
+                                    </template>
+                                    <template v-else>
+                                        <i class="fa-solid fa-circle-check mr-0.5"></i>จองแล้วใช้บริการได้เลย
+                                    </template>
+                                </span>
+                            </div>
+                            <!-- รายละเอียดห้อง -->
                             <div v-if="room.detail" class="text-xs text-slate-500 mt-0.5">{{ room.detail }}</div>
-                            <div class="mt-1.5 text-[10px] text-slate-400">
-                                <i class="fa-solid fa-gear mr-1"></i>
-                                {{ room.confirm_type === 'auto' ? 'ยืนยันอัตโนมัติ' : 'รอเจ้าหน้าที่ยืนยัน' }}
+                            <!-- roomtools badges -->
+                            <div v-if="room.tools?.length" class="mt-1.5 flex flex-wrap gap-1">
+                                <span
+                                    v-for="rt in room.tools"
+                                    :key="rt.id"
+                                    class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+                                >
+                                    <i v-if="rt.tool?.icon" :class="`fa-solid ${rt.tool.icon} text-[9px]`"></i>
+                                    {{ rt.tool?.name }}<template v-if="rt.quantity > 1"> ×{{ rt.quantity }}</template>
+                                </span>
                             </div>
                         </button>
                     </div>
@@ -1382,39 +1529,66 @@ const hideToast = () => {
                             </div>
                         </div>
 
-                        <!-- เลือกวันที่ -->
-                        <div>
-                            <label class="block mb-1 text-xs font-bold text-slate-700">{{ t("bookDate") }}</label>
-                            <input
-                                v-model="bookingForm.date"
-                                type="date"
-                                :min="minDate"
-                                required
-                                class="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                            />
+                        <!-- อุปกรณ์ในห้อง -->
+                        <div v-if="selectedRoom?.tools?.length">
+                            <label class="block mb-1.5 text-xs font-bold text-slate-700">
+                                <i class="fa-solid fa-toolbox mr-1.5 text-slate-400"></i>อุปกรณ์ในห้อง
+                            </label>
+                            <div class="flex flex-wrap gap-1.5">
+                                <span
+                                    v-for="rt in selectedRoom.tools"
+                                    :key="rt.id"
+                                    class="text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full flex items-center gap-1 font-medium"
+                                >
+                                    <i v-if="rt.tool?.icon" :class="`fa-solid ${rt.tool.icon} text-[10px]`"></i>
+                                    {{ rt.tool?.name }}<template v-if="rt.quantity > 1"> ×{{ rt.quantity }}</template>
+                                </span>
+                            </div>
                         </div>
 
                         <!-- กริด Time Slot จาก DB -->
                         <div>
                             <div class="flex items-center justify-between mb-2">
-                                <label class="text-xs font-bold text-slate-700">เลือกช่วงเวลา</label>
+                                <label class="text-xs font-bold text-slate-700">
+                                    เลือกช่วงเวลา
+                                    <span v-if="usedHoursToday > 0"
+                                        class="ml-1.5 font-normal text-amber-600">
+                                        (ใช้ไป {{ usedHoursToday }}/{{ totalQuota }} ชม. รวมทุกโซน — เหลือ {{ quota }} ชม.)
+                                    </span>
+                                    <span v-else class="ml-1.5 font-normal text-slate-400">
+                                        (สูงสุด {{ totalQuota }} ชม./วัน รวมทุกโซน)
+                                    </span>
+                                </label>
                                 <div class="flex items-center gap-3 text-[10px] text-slate-500">
-                                    <span class="flex items-center gap-1">
-                                        <span class="inline-block w-3 h-3 bg-blue-600 rounded"></span>เลือก
-                                    </span>
-                                    <span class="flex items-center gap-1">
-                                        <span class="inline-block w-3 h-3 bg-red-200 rounded"></span>ไม่ว่าง
-                                    </span>
+                                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-blue-600 rounded"></span>เลือก</span>
+                                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-slate-200 rounded"></span>ไม่พร้อม</span>
+                                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-red-200 rounded"></span>ไม่ว่าง</span>
                                 </div>
                             </div>
 
+                            <!-- วันหยุดนักขัตฤกษ์ -->
+                            <div v-if="props.todayIsHoliday"
+                                class="py-6 text-center border border-dashed border-red-200 rounded-lg bg-red-50">
+                                <i class="fa-solid fa-calendar-xmark text-lg text-red-400 mb-1"></i>
+                                <div class="text-xs font-bold text-red-600">งดให้บริการเนื่องในวันหยุดนักขัตฤกษ์</div>
+                                <div class="text-[11px] text-red-400 mt-0.5">ไม่สามารถจองใช้บริการในวันนี้ได้</div>
+                            </div>
+
+                            <!-- โควต้าหมด -->
+                            <div v-else-if="quota <= 0"
+                                class="py-6 text-center border border-dashed border-amber-200 rounded-lg bg-amber-50">
+                                <i class="fa-solid fa-circle-exclamation text-base text-amber-400 mb-1"></i>
+                                <div class="text-xs font-bold text-amber-700">โควต้าการจองหมดแล้ว</div>
+                                <div class="text-[11px] text-amber-500 mt-0.5">คุณใช้ครบ {{ totalQuota }} ชม./วัน ในโซนนี้แล้ว</div>
+                            </div>
+
                             <!-- Loading -->
-                            <div v-if="isFetchingSlots" class="py-6 text-center text-xs text-slate-400">
+                            <div v-else-if="isFetchingSlots" class="py-6 text-center text-xs text-slate-400">
                                 <i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังโหลดช่วงเวลา...
                             </div>
 
                             <!-- ไม่มีข้อมูล -->
-                            <div v-else-if="!availableTimes.length && bookingForm.date"
+                            <div v-else-if="!availableTimes.length"
                                 class="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
                                 <i class="fa-solid fa-calendar-xmark mr-1"></i> ไม่มีช่วงเวลาให้บริการในวันนี้
                             </div>
@@ -1428,8 +1602,9 @@ const hideToast = () => {
                                     @click="selectSlot(time.id)"
                                     :disabled="getSlotState(time.id) === 'booked'"
                                     :class="{
-                                        'bg-blue-600 border-blue-700 text-white font-bold shadow-sm': getSlotState(time.id) === 'selected',
+                                        'bg-blue-600 border-blue-700 text-white font-bold shadow-sm':          getSlotState(time.id) === 'selected',
                                         'bg-red-50 border-red-200 text-red-400 cursor-not-allowed line-through': getSlotState(time.id) === 'booked',
+                                        'bg-slate-100 border-slate-200 text-slate-300 cursor-default':          getSlotState(time.id) === 'dim',
                                         'bg-white border-slate-200 text-slate-600 hover:border-blue-400 hover:bg-blue-50': getSlotState(time.id) === 'available',
                                     }"
                                     class="px-1 py-2.5 text-[11px] border rounded-lg text-center transition-all leading-tight font-medium"
@@ -1438,23 +1613,19 @@ const hideToast = () => {
                                 </button>
                             </div>
 
-                            <!-- รอเลือกวันก่อน -->
-                            <div v-else class="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                                <i class="fa-regular fa-calendar mr-1"></i> เลือกวันที่ก่อนเพื่อดูช่วงเวลาว่าง
-                            </div>
                         </div>
 
                         <!-- สรุปช่วงเวลาที่เลือก -->
                         <div v-if="bookingSummary" class="flex items-center gap-3 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
                             <i class="text-base text-blue-500 fa-solid fa-clock shrink-0"></i>
-                            <div>
+                            <div class="flex-1">
                                 <div class="font-bold">{{ bookingSummary.start }} – {{ bookingSummary.end }} น.</div>
-                                <div class="text-blue-600 mt-0.5">{{ bookingSummary.title }}</div>
+                                <div class="text-blue-500 mt-0.5">รวม {{ bookingSummary.hours }} ชั่วโมง (จากโควต้า {{ quota }} ชม.)</div>
                             </div>
                         </div>
                         <div v-else class="p-3 text-center text-[11px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
                             <i class="mr-1 fa-regular fa-hand-pointer"></i>
-                            ยังไม่ได้เลือกช่วงเวลา
+                            แตะ slot เพื่อเลือก — เลือกได้สูงสุด {{ quota }} ชม. ต่อเนื่องกัน
                         </div>
 
                         <!-- Checkbox ยอมรับเงื่อนไข -->
@@ -1467,12 +1638,12 @@ const hideToast = () => {
                         <!-- ปุ่มยืนยัน -->
                         <button
                             type="submit"
-                            :disabled="!bookingSummary"
-                            :class="bookingSummary ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer' : 'bg-slate-300 cursor-not-allowed'"
+                            :disabled="!bookingSummary || props.todayIsHoliday || isSubmitting"
+                            :class="(!bookingSummary || props.todayIsHoliday || isSubmitting) ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'"
                             class="w-full text-white font-bold py-2.5 rounded-lg text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
                         >
-                            <i class="fa-solid fa-circle-check"></i>
-                            <span>{{ t("btnConfirmComplete") }}</span>
+                            <i :class="isSubmitting ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-circle-check'"></i>
+                            <span>{{ isSubmitting ? 'กำลังจอง...' : t("btnConfirmComplete") }}</span>
                         </button>
                     </form>
                 </div>

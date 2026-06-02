@@ -11,7 +11,7 @@ class HolidaySeeder extends Seeder
     {
         Holiday::updateOrCreate(
             ['d' => '1', 'm' => '1'],
-            ['detail' => 'วันหยุดปีใหม่', 'owner' => 1]
+            ['detail' => 'วันหยุดปีใหม่', 'type' => 'national', 'owner' => 1]
         );
     }
 }

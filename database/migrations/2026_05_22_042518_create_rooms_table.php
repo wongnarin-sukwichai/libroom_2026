@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('title');
             $table->string('detail')->nullable();
             $table->enum('confirm_type', ['auto', 'manual'])->default('auto')->comment('auto=confirmed ทันที (single only), manual=รอเจ้าหน้าที่');
+            $table->enum('status', ['0', '1'])->default('1')->comment('0=เปิด,1=ปิด');
             $table->timestamps();
         });
     }
