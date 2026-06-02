@@ -26,6 +26,7 @@ Route::middleware(['auth:admin', 'role.admin'])->group(function () {
 
 Route::middleware('auth:admin')->group(function () {
     Route::get('/admin/bookings',         [AdminBookingController::class, 'index']);
+    Route::post('/admin/bookings/staff',   [AdminBookingController::class, 'staffStore']);
     Route::post('/admin/bookings/approve', [AdminBookingController::class, 'approveSession']);
     Route::post('/admin/bookings/reject',  [AdminBookingController::class, 'rejectSession']);
 
@@ -46,13 +47,19 @@ Route::middleware('auth:admin')->group(function () {
 
 });
 
-// Dev only — simulate member login (ลบออกก่อน deploy จริง)
+// Dev only — simulate member/admin login (ลบออกก่อน deploy จริง)
 if (app()->environment('local')) {
     Route::get('/dev/login-as-member', function () {
         $member = \App\Models\Member::where('email', 'test.member@msu.ac.th')->firstOrFail();
         \Illuminate\Support\Facades\Auth::login($member);
         return redirect()->route('welcome');
     })->name('dev.login-member');
+
+    Route::get('/dev/login-as-admin', function () {
+        $admin = \App\Models\User::where('email', 'wongnarin.s@msu.ac.th')->firstOrFail();
+        \Illuminate\Support\Facades\Auth::guard('admin')->login($admin);
+        return redirect()->route('admin.dashboard');
+    })->name('dev.login-admin');
 }
 
 Route::get('/rooms/{room}/slots', [BookingController::class, 'slots'])->name('booking.slots');

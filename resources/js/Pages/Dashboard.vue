@@ -224,40 +224,7 @@ const sbBookedIds        = ref<number[]>([]);
 const sbSelectedTimeIds  = ref<number[]>([]);
 const sbFetchingSlots    = ref(false);
 
-// ── Calendar ─────────────────────────────────────────────────────────────
-const sbCalYear  = ref(new Date().getFullYear());
-const sbCalMonth = ref(new Date().getMonth());
 const sbTodayStr = new Date().toISOString().split('T')[0];
-const thMonths   = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-
-const sbMonthLabel = computed(() => `${thMonths[sbCalMonth.value]} ${sbCalYear.value + 543}`);
-
-const sbCalDays = computed(() => {
-    const y = sbCalYear.value, m = sbCalMonth.value;
-    const firstDow    = new Date(y, m, 1).getDay();
-    const daysInMonth = new Date(y, m + 1, 0).getDate();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const cells: Array<{ date: string; day: number } | null> = [];
-    for (let i = 0; i < firstDow; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++)
-        cells.push({ date: `${y}-${pad(m + 1)}-${pad(d)}`, day: d });
-    return cells;
-});
-
-function sbPrevMonth() {
-    if (sbCalMonth.value === 0) { sbCalMonth.value = 11; sbCalYear.value--; }
-    else sbCalMonth.value--;
-}
-function sbNextMonth() {
-    if (sbCalMonth.value === 11) { sbCalMonth.value = 0; sbCalYear.value++; }
-    else sbCalMonth.value++;
-}
-function sbPickDate(date: string) {
-    if (date < sbTodayStr) return;
-    sbDate.value = date;
-    sbSelectedTimeIds.value = [];
-}
-// ─────────────────────────────────────────────────────────────────────────
 
 const openStaffBooking = async () => {
     showStaffBooking.value   = true;
@@ -268,8 +235,6 @@ const openStaffBooking = async () => {
     sbTimes.value            = [];
     sbBookedIds.value        = [];
     sbSelectedTimeIds.value  = [];
-    sbCalYear.value          = new Date().getFullYear();
-    sbCalMonth.value         = new Date().getMonth();
     try {
         const res         = await fetch('/api/locations');
         sbLocations.value = await res.json();
@@ -330,13 +295,28 @@ const sbSummary = computed(() => {
     };
 });
 
-const sbSubmit = () => {
-    if (!sbSummary.value) return;
-    showToast(
-        'จองสำเร็จ (เจ้าหน้าที่)',
-        `${sbSelectedRoom.value!.title} • ${sbDate.value} • ${sbSummary.value.start}–${sbSummary.value.end} น. (${sbSummary.value.hours} ชม.)`,
-    );
-    showStaffBooking.value = false;
+const sbSubmitting = ref(false);
+
+const sbSubmit = async () => {
+    if (!sbSummary.value || !sbSelectedRoom.value || sbSubmitting.value) return;
+    sbSubmitting.value = true;
+    try {
+        await axios.post('/admin/bookings/staff', {
+            room_id:  sbSelectedRoom.value.id,
+            date:     sbDate.value,
+            time_ids: sbSelectedTimeIds.value,
+        });
+        showToast(
+            'จองสำเร็จ',
+            `${sbSelectedRoom.value.title} • ${sbDate.value} • ${sbSummary.value.start}–${sbSummary.value.end} น. (${sbSummary.value.hours} ชม.)`,
+        );
+        showStaffBooking.value = false;
+    } catch (err: any) {
+        const msg = err.response?.data?.message ?? 'เกิดข้อผิดพลาด กรุณาลองใหม่';
+        Swal.fire({ title: 'ไม่สำเร็จ', text: msg, icon: 'error', confirmButtonColor: '#1e3a5f' });
+    } finally {
+        sbSubmitting.value = false;
+    }
 };
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -685,7 +665,6 @@ const logoutAdmin = async () => {
                                 >
                                     <i class="fa-solid fa-calendar-plus"></i>
                                     จองห้องสำหรับเจ้าหน้าที่
-                                    <span class="bg-white/20 text-[10px] px-1.5 py-0.5 rounded font-bold">auto</span>
                                 </button>
                             </div>
                             <Bookings @pending-count="pendingCount = $event" />
@@ -727,7 +706,6 @@ const logoutAdmin = async () => {
                     <div class="flex items-center gap-2">
                         <i class="fa-solid fa-calendar-plus text-indigo-500"></i>
                         <h3 class="text-sm font-bold text-slate-900">จองห้องสำหรับเจ้าหน้าที่</h3>
-                        <span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">auto</span>
                     </div>
                     <button @click="showStaffBooking = false" class="text-slate-400 hover:text-slate-700">
                         <i class="fa-solid fa-xmark text-base"></i>
@@ -745,7 +723,7 @@ const logoutAdmin = async () => {
                         <div class="flex gap-2 flex-wrap">
                             <button
                                 v-for="loc in sbLocations" :key="loc.id"
-                                @click="sbActiveLoc = loc; sbSelectedRoom = null; sbTimes = []; sbSelectedTimeId = null"
+                                @click="sbActiveLoc = loc; sbSelectedRoom = null; sbTimes = []; sbSelectedTimeIds = []"
                                 :class="sbActiveLoc?.id === loc.id
                                     ? 'bg-indigo-600 text-white border-indigo-600'
                                     : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-400'"
@@ -778,43 +756,10 @@ const logoutAdmin = async () => {
 
                         <!-- Date + Slots (แสดงเมื่อเลือกห้องแล้ว) -->
                         <template v-if="sbSelectedRoom">
-                            <!-- Calendar -->
-                            <div class="border border-slate-200 rounded-xl overflow-hidden">
-                                <!-- Nav -->
-                                <div class="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
-                                    <button @click="sbPrevMonth" class="p-1 rounded hover:bg-slate-200 transition-colors text-slate-500">
-                                        <i class="fa-solid fa-chevron-left text-[10px]"></i>
-                                    </button>
-                                    <span class="text-xs font-bold text-slate-700">{{ sbMonthLabel }}</span>
-                                    <button @click="sbNextMonth" class="p-1 rounded hover:bg-slate-200 transition-colors text-slate-500">
-                                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
-                                    </button>
-                                </div>
-                                <!-- Day-of-week headers -->
-                                <div class="grid grid-cols-7 text-center bg-slate-50 border-b border-slate-100">
-                                    <span v-for="d in ['อา','จ','อ','พ','พฤ','ศ','ส']" :key="d"
-                                        class="text-[10px] font-bold text-slate-400 py-1">{{ d }}</span>
-                                </div>
-                                <!-- Days -->
-                                <div class="grid grid-cols-7 p-1.5 gap-0.5">
-                                    <template v-for="(cell, i) in sbCalDays" :key="i">
-                                        <div v-if="!cell" class="h-7"></div>
-                                        <button v-else @click="sbPickDate(cell.date)"
-                                            :disabled="cell.date < sbTodayStr"
-                                            :class="{
-                                                'bg-indigo-600 text-white font-bold': sbDate === cell.date,
-                                                'bg-indigo-50 text-indigo-700 font-bold ring-1 ring-indigo-300': cell.date === sbTodayStr && sbDate !== cell.date,
-                                                'text-slate-300 cursor-not-allowed': cell.date < sbTodayStr,
-                                                'hover:bg-indigo-50 text-slate-700': cell.date >= sbTodayStr && sbDate !== cell.date,
-                                            }"
-                                            class="h-7 w-full text-[11px] rounded-lg transition-all">
-                                            {{ cell.day }}
-                                        </button>
-                                    </template>
-                                </div>
-                                <div v-if="sbDate" class="px-3 py-2 border-t border-slate-100 text-[11px] text-center text-indigo-600 font-semibold bg-indigo-50">
-                                    เลือก: {{ sbDate }}
-                                </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-700 block mb-1.5">เลือกวันที่</label>
+                                <input type="date" v-model="sbDate" :min="sbTodayStr"
+                                    class="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200" />
                             </div>
 
                             <div>
@@ -855,11 +800,12 @@ const logoutAdmin = async () => {
                             </div>
                             <button
                                 @click="sbSubmit"
-                                :disabled="!sbSummary"
-                                :class="sbSummary ? 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer' : 'bg-slate-300 cursor-not-allowed'"
+                                :disabled="!sbSummary || sbSubmitting"
+                                :class="sbSummary && !sbSubmitting ? 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer' : 'bg-slate-300 cursor-not-allowed'"
                                 class="w-full text-white font-bold py-2.5 rounded-lg text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
                             >
-                                <i class="fa-solid fa-circle-check"></i> ยืนยันการจอง
+                                <i :class="sbSubmitting ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-circle-check'"></i>
+                                {{ sbSubmitting ? 'กำลังจอง...' : 'ยืนยันการจอง' }}
                             </button>
                         </template>
                     </template>

@@ -4,8 +4,13 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\BookingGroup;
+use App\Models\Holiday;
+use App\Models\Room;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class AdminBookingController extends Controller
 {
@@ -18,6 +23,7 @@ class AdminBookingController extends Controller
             'room.zone'          => fn($q) => $q->select('id', 'loc_id', 'title'),
             'room.zone.location' => fn($q) => $q->select('id', 'title'),
             'lead'               => fn($q) => $q->select('id', 'name', 'email', 'type'),
+            'admin'              => fn($q) => $q->select('id', 'name', 'email'),
         ])
         ->where('date', $date)
         ->orderByRaw("FIELD(status, 'pending', 'waiting_confirm', 'confirmed', 'completed', 'cancelled')")
@@ -86,8 +92,8 @@ class AdminBookingController extends Controller
                     'room_title'   => $g->room?->title,
                     'zone_title'   => $g->room?->zone?->title,
                     'loc_title'    => $g->room?->zone?->location?->title,
-                    'member_name'  => $g->lead?->name,
-                    'member_email' => $g->lead?->email,
+                    'member_name'  => $g->lead?->name  ?? ($g->admin ? $g->admin->name  . ' (เจ้าหน้าที่)' : null),
+                    'member_email' => $g->lead?->email ?? $g->admin?->email,
                 ];
             }
         }
@@ -112,6 +118,76 @@ class AdminBookingController extends Controller
             'member_name'  => $s['member_name'],
             'member_email' => $s['member_email'],
         ];
+    }
+
+    public function staffStore(Request $request)
+    {
+        $data = $request->validate([
+            'room_id'    => 'required|integer|exists:rooms,id',
+            'date'       => 'required|date|after_or_equal:today',
+            'time_ids'   => 'required|array|min:1',
+            'time_ids.*' => 'integer',
+        ]);
+
+        $timeIds = collect($data['time_ids'])->sort()->values()->all();
+
+        for ($i = 1; $i < count($timeIds); $i++) {
+            if ($timeIds[$i] !== $timeIds[$i - 1] + 1) {
+                return response()->json(['message' => 'ต้องเลือกช่วงเวลาที่ต่อเนื่องกันเท่านั้น'], 422);
+            }
+        }
+
+        $room = Room::findOrFail($data['room_id']);
+
+        if ($room->status === '1') {
+            return response()->json(['message' => 'ห้องนี้ไม่พร้อมให้บริการ'], 422);
+        }
+
+        try {
+            $groups = DB::transaction(function () use ($data, $timeIds, $room) {
+                foreach ($timeIds as $timeId) {
+                    $taken = BookingGroup::where('room_id', $data['room_id'])
+                        ->where('date', $data['date'])
+                        ->where('time_id', $timeId)
+                        ->whereIn('status', ['pending', 'waiting_confirm', 'confirmed'])
+                        ->lockForUpdate()
+                        ->exists();
+
+                    if ($taken) throw new \Exception('slot_taken');
+                }
+
+                $adminId = Auth::guard('admin')->id();
+                $groups  = [];
+
+                foreach ($timeIds as $timeId) {
+                    $group = BookingGroup::create([
+                        'room_id'          => $data['room_id'],
+                        'date'             => $data['date'],
+                        'time_id'          => $timeId,
+                        'lead_user_id'     => null,
+                        'admin_id'         => $adminId,
+                        'status'           => 'confirmed',
+                        'join_token'       => Str::random(32),
+                        'token_expires_at' => Carbon::now()->addMinutes(15),
+                    ]);
+
+                    $groups[] = $group;
+                }
+
+                return $groups;
+            });
+
+            return response()->json([
+                'message' => 'จองสำเร็จ',
+                'count'   => count($groups),
+            ]);
+
+        } catch (\Exception $e) {
+            $msg = $e->getMessage() === 'slot_taken'
+                ? 'เสียใจด้วย ช่วงเวลานี้ถูกจองไปแล้ว'
+                : 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง';
+            return response()->json(['message' => $msg], 422);
+        }
     }
 
     public function approveSession(Request $request)

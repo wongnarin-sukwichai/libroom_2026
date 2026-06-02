@@ -9,6 +9,7 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
+        //Login ด้วย http://127.0.0.1:8000/dev/login-as-admin
         User::updateOrCreate(
             ['email' => 'wongnarin.s@msu.ac.th'],
             [

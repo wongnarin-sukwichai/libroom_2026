@@ -9,7 +9,7 @@ class BookingGroup extends Model
     protected $table = 'booking_groups';
 
     protected $fillable = [
-        'room_id', 'date', 'time_id', 'lead_user_id',
+        'room_id', 'date', 'time_id', 'lead_user_id', 'admin_id',
         'status', 'join_token', 'token_expires_at',
         'cancel_code', 'cancelled_at',
     ];
@@ -29,5 +29,10 @@ class BookingGroup extends Model
     public function lead()
     {
         return $this->belongsTo(Member::class, 'lead_user_id');
+    }
+
+    public function admin()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'admin_id');
     }
 }
