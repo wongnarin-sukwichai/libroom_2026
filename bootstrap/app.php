@@ -20,7 +20,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role.admin' => \App\Http\Middleware\EnsureAdminRole::class,
         ]);
+
+        $middleware->redirectGuestsTo(fn ($request) => route('auth.google'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, $request) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
+            return redirect()->guest(route('auth.google'));
+        });
     })->create();

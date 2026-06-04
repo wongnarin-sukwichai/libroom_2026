@@ -64,6 +64,10 @@ const formatDate = (dateStr) => {
 };
 
 const handleLogout = () => router.post('/logout');
+
+const copyLink = (url) => {
+    navigator.clipboard.writeText(url);
+};
 </script>
 
 <template>
@@ -122,6 +126,20 @@ const handleLogout = () => router.post('/logout');
                                 <div><i class="fa-solid fa-location-dot mr-1.5 text-slate-300"></i>{{ b.loc_title }} › {{ b.zone_title }}</div>
                                 <div><i class="fa-solid fa-calendar mr-1.5 text-slate-300"></i>{{ formatDate(b.date) }}</div>
                                 <div><i class="fa-solid fa-clock mr-1.5 text-slate-300"></i>{{ b.time_label }}</div>
+                                <div v-if="b.status === 'pending' && b.member_count < b.min_capacity">
+                                    <i class="fa-solid fa-users mr-1.5 text-slate-300"></i>
+                                    <span class="text-amber-600 font-semibold">สมาชิก {{ b.member_count }}/{{ b.min_capacity }} คน</span>
+                                </div>
+                            </div>
+
+                            <!-- Join link สำหรับ leader ที่ลืม copy -->
+                            <div v-if="b.join_url" class="mt-2 flex items-center gap-2">
+                                <input :value="b.join_url" readonly
+                                    class="flex-1 text-[10px] px-2 py-1 border border-slate-200 rounded bg-slate-50 text-slate-500 truncate" />
+                                <button @click="copyLink(b.join_url)"
+                                    class="shrink-0 text-[10px] font-bold px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 transition-all flex items-center gap-1">
+                                    <i class="fa-solid fa-copy"></i> คัดลอก
+                                </button>
                             </div>
                         </div>
                         <button v-if="b.can_cancel"

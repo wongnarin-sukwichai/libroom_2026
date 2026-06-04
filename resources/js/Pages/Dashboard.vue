@@ -2,15 +2,13 @@
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { usePage, router } from "@inertiajs/vue3";
 import Swal from "sweetalert2";
-import type { AdminUser, Booking, Room, Member, Holiday, ServiceDay, Feedback } from "../types/admin";
+import type { AdminUser } from "../types/admin";
 import Overview from "../Components/Admin/Overview.vue";
 import Bookings from "../Components/Admin/Bookings.vue";
 import Members from "../Components/Admin/Members.vue";
 import Rooms from "../Components/Admin/Rooms.vue";
 import Holidays from "../Components/Admin/Holidays.vue";
 import ServiceHours from "../Components/Admin/ServiceHours.vue";
-import Reports from "../Components/Admin/Reports.vue";
-import Manual from "../Components/Admin/Manual.vue";
 import AdminUsers from "../Components/Admin/AdminUsers.vue";
 
 interface ToastState {
@@ -26,8 +24,6 @@ type TabId =
     | "rooms"
     | "holidays"
     | "service_hours"
-    | "reports"
-    | "manual"
     | "admin_users";
 
 // Auth
@@ -62,94 +58,7 @@ onUnmounted(() => window.removeEventListener("resize", updateMobile));
 
 const currentTab = ref<TabId>("overview");
 
-// Mock data
-const bookings = ref<Booking[]>([
-    {
-        id: 1,
-        studentName: "นายอนุชิต วงศ์สุวรรณ",
-        studentId: "64010912140",
-        studentType: "นิสิต ป.ตรี",
-        zone: "โซนอาคารหลัก",
-        roomName: "โต๊ะรวมกลุ่มเล็ก (Zone B)",
-        date: "27 พฤษภาคม 2569",
-        timeSlot: "13:00 – 15:00 น.",
-        status: "pending",
-    },
-    {
-        id: 2,
-        studentName: "นส. ธัญญาพร ประเสริฐสังข์",
-        studentId: "65011244512",
-        studentType: "นิสิต ป.ตรี",
-        zone: "Co-Working Space",
-        roomName: "มุมคอมพิวเตอร์กราฟิก Mac Suite",
-        date: "27 พฤษภาคม 2569",
-        timeSlot: "09:00 – 11:00 น.",
-        status: "pending",
-    },
-    {
-        id: 3,
-        studentName: "นายธนาธิป สุวรรณสิงห์",
-        studentId: "63011311025",
-        studentType: "บัณฑิตศึกษา",
-        zone: "ห้องศึกษากลุ่ม",
-        roomName: "ห้องศึกษากลุ่มขนาดใหญ่ (Group Room L)",
-        date: "28 พฤษภาคม 2569",
-        timeSlot: "14:00 – 17:00 น.",
-        status: "pending",
-    },
-]);
-
-const rooms = ref<Room[]>([
-    { id: 1, name: "คอกศึกษาเดี่ยว (Booth 1-10)", zone: "โซนอาคารหลัก (ชั้น 1)", active: true },
-    { id: 2, name: "โต๊ะรวมกลุ่มเล็ก (Zone B)", zone: "โซนอาคารหลัก (ชั้น 1)", active: true },
-    { id: 3, name: "ห้องสัมมนาวิชาการ (Zone C)", zone: "โซนอาคารหลัก (ชั้น 1)", active: true },
-    { id: 4, name: "พื้นที่แลกเปลี่ยนไอเดีย", zone: "โซน Co-Working Space", active: true },
-    { id: 5, name: "มุมคอมพิวเตอร์กราฟิก Mac Suite", zone: "โซน Co-Working Space", active: true },
-    { id: 6, name: "พื้นที่พักผ่อน Relax & Read", zone: "โซน Co-Working Space", active: false },
-    { id: 7, name: "ห้องศึกษากลุ่มย่อย Room M", zone: "โซนห้องศึกษากลุ่ม (ชั้น 3-4)", active: true },
-    { id: 8, name: "ห้องศึกษากลุ่มใหญ่ Room L", zone: "โซนห้องศึกษากลุ่ม (ชั้น 3-4)", active: true },
-    { id: 9, name: "ห้อง Mini Theater", zone: "โซนห้องศึกษากลุ่ม (ชั้น 3-4)", active: false },
-]);
-
-const members = ref<Member[]>([
-    { id: 1, name: "นายอนุชิต วงศ์สุวรรณ", email: "anuchit.w@msu.ac.th", code: "64010912140", type: "นิสิต ป.ตรี", faculty: "คณะวิทยาการสารสนเทศ", totalBookings: 12, lastBooking: "27 พ.ค. 2569" },
-    { id: 2, name: "นส. ธัญญาพร ประเสริฐสังข์", email: "thanyaporn.p@msu.ac.th", code: "65011244512", type: "นิสิต ป.ตรี", faculty: "คณะมนุษยศาสตร์ฯ", totalBookings: 8, lastBooking: "27 พ.ค. 2569" },
-    { id: 3, name: "นายธนาธิป สุวรรณสิงห์", email: "thanathip.s@msu.ac.th", code: "63011311025", type: "บัณฑิตศึกษา", faculty: "คณะวิทยาศาสตร์", totalBookings: 25, lastBooking: "26 พ.ค. 2569" },
-    { id: 4, name: "นส. พิมพ์ชนก รักเรียน", email: "pimchanok.r@msu.ac.th", code: "66010811034", type: "นิสิต ป.ตรี", faculty: "คณะศึกษาศาสตร์", totalBookings: 3, lastBooking: "24 พ.ค. 2569" },
-    { id: 5, name: "ผศ.ดร. วรากร ทองดี", email: "warakorn.t@msu.ac.th", code: "STF-20145", type: "บุคลากร/อาจารย์", faculty: "คณะวิศวกรรมศาสตร์", totalBookings: 6, lastBooking: "25 พ.ค. 2569" },
-]);
-
-const holidays = ref<Holiday[]>([
-    { id: 1, date: "5 มิถุนายน 2569", name: "วันเฉลิมพระชนมพรรษา สมเด็จพระราชินี", type: "national" },
-    { id: 2, date: "28 กรกฎาคม 2569", name: "วันเฉลิมพระชนมพรรษา รัชกาลที่ 10", type: "national" },
-    { id: 3, date: "12 สิงหาคม 2569", name: "วันแม่แห่งชาติ", type: "national" },
-    { id: 4, date: "15–16 สิงหาคม 2569", name: "ปิดปรับปรุงระบบประจำปี", type: "library" },
-    { id: 5, date: "23 ตุลาคม 2569", name: "วันปิยมหาราช", type: "national" },
-    { id: 6, date: "5 ธันวาคม 2569", name: "วันพ่อแห่งชาติ", type: "national" },
-]);
-
-const serviceHours = ref<ServiceDay[]>([
-    { day: "จันทร์", isOpen: true, openTime: "08:00", closeTime: "21:00" },
-    { day: "อังคาร", isOpen: true, openTime: "08:00", closeTime: "21:00" },
-    { day: "พุธ", isOpen: true, openTime: "08:00", closeTime: "21:00" },
-    { day: "พฤหัสบดี", isOpen: true, openTime: "08:00", closeTime: "21:00" },
-    { day: "ศุกร์", isOpen: true, openTime: "08:00", closeTime: "20:00" },
-    { day: "เสาร์", isOpen: true, openTime: "09:00", closeTime: "17:00" },
-    { day: "อาทิตย์", isOpen: false, openTime: "09:00", closeTime: "17:00" },
-]);
-
-const feedbacks = ref<Feedback[]>([
-    { id: 1, studentInfo: "นิสิต คณะวิทยาการสารสนเทศ • 640109xxxx", stars: 5, comment: "ระบบจองออนไลน์ช่วยให้จองโต๊ะได้สะดวกมากค่ะ ขอบคุณมากๆ ค่ะ" },
-    { id: 2, studentInfo: "นิสิต คณะมนุษยศาสตร์ฯ • 650112xxxx", stars: 4, comment: "อยากให้มีแจ้งเตือน Line Notify ก่อนถึงเวลาจองสัก 15 นาทีค่ะ" },
-]);
-
-// Computed stats
 const pendingCount = ref(0);
-const baseApproved = ref(24);
-const approvedCount = computed(
-    () => baseApproved.value + bookings.value.filter((b) => b.status === "approved").length,
-);
-const activeRooms = computed(() => rooms.value.filter((r) => r.active).length);
 
 // Toast
 const toast = ref<ToastState>({ show: false, title: "", desc: "", isError: false });
@@ -168,43 +77,6 @@ const switchTab = (id: TabId) => {
     if (id === 'admin_users' && !isAdmin.value) return;
     currentTab.value = id;
     if (isMobile.value) isSidebarCollapsed.value = true;
-};
-
-const updateBookingStatus = (id: number, action: "approve" | "reject") => {
-    const b = bookings.value.find((b) => b.id === id);
-    if (!b) return;
-    b.status = action === "approve" ? "approved" : "rejected";
-    showToast(
-        action === "approve" ? "อนุมัติคิวสำเร็จ" : "ปฏิเสธเรียบร้อย",
-        action === "approve" ? "ส่งอีเมลยืนยันสิทธิ์แก่ผู้จองแล้ว" : "แจ้งผู้จองทราบเรียบร้อยแล้ว",
-        action !== "approve",
-    );
-};
-
-const toggleRoom = (id: number) => {
-    const r = rooms.value.find((r) => r.id === id);
-    if (!r) return;
-    r.active = !r.active;
-    showToast(
-        r.active ? "เปิดใช้งานแล้ว" : "ปิดให้บริการชั่วคราว",
-        r.active ? "ห้องพร้อมแสดงบนเว็บหลัก" : "ห้องนี้ซ่อนจากหน้าจองแล้ว",
-        !r.active,
-    );
-};
-
-const toggleServiceDay = (idx: number) => {
-    serviceHours.value[idx].isOpen = !serviceHours.value[idx].isOpen;
-    const d = serviceHours.value[idx];
-    showToast(
-        d.isOpen ? `เปิดบริการวัน${d.day}` : `ปิดบริการวัน${d.day}`,
-        d.isOpen ? "อัปเดตตารางเรียบร้อย" : "วันนี้ไม่มีการให้บริการ",
-        !d.isOpen,
-    );
-};
-
-const deleteHoliday = (id: number) => {
-    holidays.value = holidays.value.filter((h) => h.id !== id);
-    showToast("ลบวันหยุดแล้ว", "อัปเดตตารางวันหยุดเรียบร้อย", false);
 };
 
 // ─── Staff Booking Modal ───────────────────────────────────────────────────
@@ -528,36 +400,24 @@ const logoutAdmin = async () => {
                     >
                         รายงาน & ข้อมูล
                     </p>
-                    <button
-                        @click="switchTab('reports')"
-                        :class="
-                            currentTab === 'reports'
-                                ? 'nav-active text-white'
-                                : 'hover:bg-slate-800 hover:text-white'
-                        "
-                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl"
+                    <a
+                        href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl hover:bg-slate-800 hover:text-white"
                     >
-                        <i
-                            class="w-4 text-sm text-center fa-solid fa-star-half-stroke"
-                            :class="currentTab === 'reports' ? 'text-amber-400' : ''"
-                        ></i>
+                        <i class="w-4 text-sm text-center fa-solid fa-star-half-stroke"></i>
                         <span v-show="!isSidebarCollapsed">ผลประเมิน & รายงาน</span>
-                    </button>
-                    <button
-                        @click="switchTab('manual')"
-                        :class="
-                            currentTab === 'manual'
-                                ? 'nav-active text-white'
-                                : 'hover:bg-slate-800 hover:text-white'
-                        "
-                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl"
+                    </a>
+                    <a
+                        href="/pdf/tools.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl hover:bg-slate-800 hover:text-white"
                     >
-                        <i
-                            class="w-4 text-sm text-center fa-solid fa-book-open"
-                            :class="currentTab === 'manual' ? 'text-amber-400' : ''"
-                        ></i>
+                        <i class="w-4 text-sm text-center fa-solid fa-book-open"></i>
                         <span v-show="!isSidebarCollapsed">คู่มือการใช้งาน</span>
-                    </button>
+                    </a>
                 </nav>
             </div>
 
@@ -652,10 +512,6 @@ const logoutAdmin = async () => {
                             v-if="currentTab === 'overview'"
                             :admin="admin"
                             :pending-count="pendingCount"
-                            :approved-count="approvedCount"
-                            :active-rooms="activeRooms"
-                            :total-rooms="rooms.length"
-                            :total-members="members.length"
                         />
                         <div v-else-if="currentTab === 'bookings'" class="space-y-4">
                             <div class="flex justify-end">
@@ -669,18 +525,10 @@ const logoutAdmin = async () => {
                             </div>
                             <Bookings @pending-count="pendingCount = $event" />
                         </div>
-                        <Members
-                            v-else-if="currentTab === 'members'"
-                            :members="members"
-                        />
+                        <Members v-else-if="currentTab === 'members'" />
                         <Rooms v-else-if="currentTab === 'rooms'" />
                         <Holidays v-else-if="currentTab === 'holidays'" />
                         <ServiceHours v-else-if="currentTab === 'service_hours'" />
-                        <Reports
-                            v-else-if="currentTab === 'reports'"
-                            :feedbacks="feedbacks"
-                        />
-                        <Manual v-else-if="currentTab === 'manual'" />
                         <AdminUsers v-else-if="currentTab === 'admin_users'" />
                     </div>
                 </Transition>

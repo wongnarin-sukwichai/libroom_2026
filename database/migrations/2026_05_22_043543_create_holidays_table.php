@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('d');
             $table->string('m');
             $table->string('detail');
+            $table->enum('type', ['national', 'library'])->default('national')->comment('national=ราชการ, library=ห้องสมุด');
             $table->integer('owner');
             $table->timestamps();
         });

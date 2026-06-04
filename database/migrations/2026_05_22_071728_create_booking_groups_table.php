@@ -15,8 +15,9 @@ return new class extends Migration
             $table->id();
             $table->integer('room_id');
             $table->date('date');
-            $table->integer('time_id');
-            $table->integer('lead_user_id');
+            $table->integer('time_id')->comment('hour number เช่น 9,10,11...');
+            $table->integer('lead_user_id')->nullable()->comment('FK → members.id, null ถ้า admin จอง');
+            $table->integer('admin_id')->nullable()->comment('FK → users.id, null ถ้า member จอง');
             $table->enum('status', ['pending', 'waiting_confirm', 'confirmed', 'completed', 'cancelled'])->default('pending')->comment('pending=รอสมาชิก, waiting_confirm=ครบแต่รอเจ้าหน้าที่, confirmed=ยืนยัน, completed=เสร็จ, cancelled=ยกเลิก');
             $table->string('join_token')->unique();
             $table->timestamp('token_expires_at');

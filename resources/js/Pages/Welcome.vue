@@ -198,6 +198,7 @@ const modals = ref({
     manual: false,
     evaluation: false,
     booking: false,
+    joinShare: false,
 });
 
 const openModal = (name) => {
@@ -347,7 +348,9 @@ const bookingSummary = computed(() => {
     };
 });
 
-const isSubmitting = ref(false);
+const isSubmitting  = ref(false);
+const joinUrl       = ref(null);
+const joinCapacity  = ref({ need: 0, current: 1 });
 
 const handleBookingSubmit = async () => {
     if (!bookingSummary.value || isSubmitting.value) return;
@@ -380,6 +383,15 @@ const handleBookingSubmit = async () => {
 
         closeModal('booking');
 
+        // manual room ที่ต้องการเพื่อนเพิ่ม → แสดง modal แชร์ลิงก์
+        if (json.join_url) {
+            joinUrl.value      = json.join_url;
+            joinCapacity.value = { need: json.min_capacity, current: json.member_count };
+            openModal('joinShare');
+            await fetchSlots();
+            return;
+        }
+
         const isAuto = json.confirm_type === 'auto';
         showToast(
             currentLang.value === 'th' ? 'จองสำเร็จ!' : 'Booking Complete!',
@@ -388,7 +400,6 @@ const handleBookingSubmit = async () => {
                 : `${selectedRoom.value.title} • ${bookingSummary.value.start}–${bookingSummary.value.end} (${bookingSummary.value.hours}h)`,
         );
 
-        // refresh slots เพื่ออัปเดต slot ที่เพิ่งจองให้ขึ้น "ไม่ว่าง"
         await fetchSlots();
 
     } catch {
@@ -396,6 +407,12 @@ const handleBookingSubmit = async () => {
     } finally {
         isSubmitting.value = false;
     }
+};
+
+const copyJoinUrl = () => {
+    if (!joinUrl.value) return;
+    navigator.clipboard.writeText(joinUrl.value);
+    showToast('คัดลอกแล้ว', 'ลิงก์พร้อมส่งให้เพื่อนแล้ว');
 };
 
 // --- 6. ฟอร์มประเมินความพึงพอใจ ---
@@ -1651,7 +1668,73 @@ const hideToast = () => {
         </div>
         </Transition>
 
-        <!-- 7. แจ้งเตือน (Toast Notification) -->
+        <!-- 7. Modal แชร์ลิงก์เชิญเพื่อน (Join Share Modal) -->
+        <Transition name="fade">
+        <div v-if="modals.joinShare"
+            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-2xl border-slate-200">
+                <div class="flex items-center justify-between p-5 text-white bg-blue-900">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-user-plus text-amber-400"></i>
+                        <h3 class="text-sm font-bold font-prompt">แชร์ลิงก์ให้เพื่อนเข้าร่วม</h3>
+                    </div>
+                    <button @click="closeModal('joinShare')" class="transition-colors text-slate-300 hover:text-white">
+                        <i class="text-lg fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="p-6 space-y-4">
+                    <!-- Progress -->
+                    <div class="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                        <div class="flex items-center justify-between text-xs mb-2">
+                            <span class="font-semibold text-blue-900">สมาชิกในกลุ่ม</span>
+                            <span class="font-bold text-blue-900">{{ joinCapacity.current }} / {{ joinCapacity.need }} คน</span>
+                        </div>
+                        <div class="w-full h-2 bg-blue-200 rounded-full overflow-hidden">
+                            <div class="h-full bg-blue-600 rounded-full"
+                                :style="{ width: Math.min(100, (joinCapacity.current / joinCapacity.need) * 100) + '%' }">
+                            </div>
+                        </div>
+                        <p class="text-[11px] text-blue-600 mt-1.5">
+                            ต้องการอีก {{ joinCapacity.need - joinCapacity.current }} คน เพื่อส่งให้เจ้าหน้าที่ยืนยัน
+                        </p>
+                    </div>
+
+                    <!-- Link -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5">ลิงก์เชิญเพื่อน</label>
+                        <div class="flex gap-2">
+                            <input
+                                :value="joinUrl"
+                                readonly
+                                class="flex-1 text-xs px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-600 truncate focus:outline-none"
+                            />
+                            <button
+                                @click="copyJoinUrl"
+                                class="shrink-0 bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5"
+                            >
+                                <i class="fa-solid fa-copy"></i>
+                                คัดลอก
+                            </button>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] text-slate-400 text-center">
+                        <i class="fa-solid fa-clock mr-1"></i>
+                        ลิงก์มีอายุ 15 นาที — หากครบกำหนดแล้วยังไม่ครบกลุ่ม ระบบจะยกเลิกอัตโนมัติ
+                    </p>
+
+                    <button
+                        @click="closeModal('joinShare')"
+                        class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs transition-all"
+                    >
+                        รับทราบ
+                    </button>
+                </div>
+            </div>
+        </div>
+        </Transition>
+
+        <!-- 8. แจ้งเตือน (Toast Notification) -->
         <Transition name="fade">
             <div
                 v-if="toast.show"
