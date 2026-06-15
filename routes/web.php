@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminBookingController;
 use App\Http\Controllers\Admin\AdminHolidayController;
+use App\Http\Controllers\Admin\AdminKioskController;
 use App\Http\Controllers\Admin\AdminMemberController;
 use App\Http\Controllers\Admin\AdminOverviewController;
 use App\Http\Controllers\Admin\AdminRoomController;
@@ -24,11 +25,19 @@ Route::middleware(['auth:admin', 'role.admin'])->group(function () {
     Route::post('/admin/users', [AdminUserController::class, 'store']);
     Route::put('/admin/users/{user}', [AdminUserController::class, 'update']);
     Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy']);
+
+    Route::get('/admin/kiosk-bypass',              [AdminKioskController::class, 'index']);
+    Route::post('/admin/kiosk-bypass',             [AdminKioskController::class, 'store']);
+    Route::post('/admin/kiosk-bypass/{bypass}/toggle',  [AdminKioskController::class, 'toggle']);
+    Route::delete('/admin/kiosk-bypass/{bypass}',  [AdminKioskController::class, 'destroy']);
 });
 
 Route::middleware('auth:admin')->group(function () {
-    Route::get('/admin/members',            [AdminMemberController::class, 'index']);
-    Route::get('/admin/overview-stats',    [AdminOverviewController::class, 'stats']);
+    Route::get('/admin/members',                      [AdminMemberController::class, 'index']);
+    Route::put('/admin/members/{member}/code',        [AdminMemberController::class, 'updateCode']);
+    Route::get('/admin/overview-stats',   [AdminOverviewController::class, 'stats']);
+    Route::get('/admin/overview-service', [AdminOverviewController::class, 'serviceStats']);
+    Route::get('/admin/overview-most',    [AdminOverviewController::class, 'mostStats']);
     Route::get('/admin/bookings',         [AdminBookingController::class, 'index']);
     Route::post('/admin/bookings/staff',   [AdminBookingController::class, 'staffStore']);
     Route::post('/admin/bookings/approve', [AdminBookingController::class, 'approveSession']);
@@ -41,14 +50,13 @@ Route::middleware('auth:admin')->group(function () {
     Route::get('/admin/times',          [AdminTimeController::class, 'index']);
     Route::post('/admin/times',         [AdminTimeController::class, 'store']);
     Route::put('/admin/times/{time}',   [AdminTimeController::class, 'update']);
-    Route::delete('/admin/times/{time}',[AdminTimeController::class, 'destroy']);
+    Route::delete('/admin/times/{time}', [AdminTimeController::class, 'destroy']);
 
     Route::get('/admin/rooms',                              [AdminRoomController::class, 'index']);
     Route::post('/admin/locations/{location}/toggle',       [AdminRoomController::class, 'toggleLocation']);
     Route::post('/admin/zones/{zone}/toggle',               [AdminRoomController::class, 'toggleZone']);
     Route::post('/admin/rooms/{room}/toggle',               [AdminRoomController::class, 'toggleRoom']);
     Route::put('/admin/zones/{zone}/settings',              [AdminRoomController::class, 'updateZoneSettings']);
-
 });
 
 // Dev only — simulate member/admin login (ลบออกก่อน deploy จริง)

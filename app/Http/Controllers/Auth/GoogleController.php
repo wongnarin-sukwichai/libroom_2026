@@ -29,12 +29,16 @@ class GoogleController extends Controller
             return redirect()->route('admin.dashboard');
         }
 
+        $emailPrefix = explode('@', $googleUser->getEmail())[0];
+        $autoCode    = ctype_digit($emailPrefix) ? $emailPrefix : null;
+
         $member = Member::firstOrCreate(
             ['email' => $googleUser->getEmail()],
             [
                 'google_id' => $googleUser->getId(),
                 'name'      => $googleUser->getName(),
                 'avatar'    => $googleUser->getAvatar(),
+                'code'      => $autoCode,
             ]
         );
         $member->update([

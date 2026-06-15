@@ -10,6 +10,7 @@ import Rooms from "../Components/Admin/Rooms.vue";
 import Holidays from "../Components/Admin/Holidays.vue";
 import ServiceHours from "../Components/Admin/ServiceHours.vue";
 import AdminUsers from "../Components/Admin/AdminUsers.vue";
+import KioskAccess from "../Components/Admin/KioskAccess.vue";
 
 interface ToastState {
     show: boolean;
@@ -24,7 +25,8 @@ type TabId =
     | "rooms"
     | "holidays"
     | "service_hours"
-    | "admin_users";
+    | "admin_users"
+    | "kiosk";
 
 // Auth
 const page = usePage();
@@ -340,6 +342,23 @@ const logoutAdmin = async () => {
                         >
                     </button>
 
+                    <button
+                        v-if="isAdmin"
+                        @click="switchTab('kiosk')"
+                        :class="
+                            currentTab === 'kiosk'
+                                ? 'nav-active text-white'
+                                : 'hover:bg-slate-800 hover:text-white'
+                        "
+                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl"
+                    >
+                        <i
+                            class="w-4 text-sm text-center fa-solid fa-door-open"
+                            :class="currentTab === 'kiosk' ? 'text-amber-400' : ''"
+                        ></i>
+                        <span v-show="!isSidebarCollapsed">Kiosk Bypass</span>
+                    </button>
+
                     <!-- Section: ตั้งค่าระบบ -->
                     <p
                         v-show="!isSidebarCollapsed"
@@ -530,6 +549,7 @@ const logoutAdmin = async () => {
                         <Holidays v-else-if="currentTab === 'holidays'" />
                         <ServiceHours v-else-if="currentTab === 'service_hours'" />
                         <AdminUsers v-else-if="currentTab === 'admin_users'" />
+                        <KioskAccess v-else-if="currentTab === 'kiosk'" />
                     </div>
                 </Transition>
             </main>

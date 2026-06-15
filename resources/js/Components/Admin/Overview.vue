@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import type { AdminUser } from '../../types/admin';
 
@@ -14,15 +14,47 @@ const activeRooms    = ref(0);
 const totalRooms     = ref(0);
 const totalMembers   = ref(0);
 
+// getService — สถิติการเข้าใช้บริการรายพื้นที่ (Location) เดือนนี้
+interface ServiceData { arec?: number; dlp?: number; space?: number }
+const serviceData    = ref<ServiceData>({});
+const serviceLoading = ref(true);
+const SERVICE_META: Record<string, { label: string; barClass: string; textClass: string }> = {
+    arec:  { label: 'อาคารวิทยบริการ A',  barClass: 'from-blue-700 to-blue-950',      textClass: 'text-blue-900' },
+    dlp:   { label: 'อาคารวิทยบริการ B',  barClass: 'from-orange-400 to-amber-500',   textClass: 'text-orange-500' },
+    space: { label: 'MSU Space',            barClass: 'from-green-500 to-emerald-600',  textClass: 'text-green-600' },
+};
+const serviceMax = computed(() =>
+    Math.max(1, ...Object.values(serviceData.value).map(v => v ?? 0))
+);
+
+// getMost — top 5 zone จาก DB เดือนนี้
+interface ZoneStat { title: string; count: number }
+const mostData    = ref<ZoneStat[]>([]);
+const mostLoading = ref(true);
+const ZONE_BARS   = ['bg-blue-600','bg-orange-500','bg-emerald-500','bg-violet-500','bg-rose-500'];
+const mostMax     = computed(() => Math.max(1, ...mostData.value.map(z => z.count)));
+
+const thaiMonth = new Date().toLocaleString('th-TH', { month: 'long', year: 'numeric' });
+
 onMounted(async () => {
-    try {
-        const res = await axios.get('/admin/overview-stats');
-        approvedToday.value  = res.data.approved_today;
-        cancelledToday.value = res.data.cancelled_today;
-        activeRooms.value    = res.data.active_rooms;
-        totalRooms.value     = res.data.total_rooms;
-        totalMembers.value   = res.data.total_members;
-    } catch {}
+    const [statsRes, svcRes, mostRes] = await Promise.allSettled([
+        axios.get('/admin/overview-stats'),
+        axios.get('/admin/overview-service'),
+        axios.get('/admin/overview-most'),
+    ]);
+
+    if (statsRes.status === 'fulfilled') {
+        approvedToday.value  = statsRes.value.data.approved_today;
+        cancelledToday.value = statsRes.value.data.cancelled_today;
+        activeRooms.value    = statsRes.value.data.active_rooms;
+        totalRooms.value     = statsRes.value.data.total_rooms;
+        totalMembers.value   = statsRes.value.data.total_members;
+    }
+    if (svcRes.status === 'fulfilled') serviceData.value = svcRes.value.data;
+    serviceLoading.value = false;
+
+    if (mostRes.status === 'fulfilled') mostData.value = mostRes.value.data;
+    mostLoading.value = false;
 });
 </script>
 
@@ -137,77 +169,99 @@ onMounted(async () => {
             </div>
         </div>
 
-        <!-- Charts (static layout) -->
+        <!-- Charts (live data) -->
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
+
+            <!-- getService: สถิติการเข้าใช้บริการรายพื้นที่ เดือนนี้ -->
             <div class="p-6 space-y-4 bg-white border shadow-sm lg:col-span-8 rounded-2xl border-slate-200">
                 <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                     <h4 class="flex items-center gap-2 text-sm font-bold text-slate-900">
                         <i class="text-blue-900 fa-solid fa-chart-column"></i>
-                        สถิติการจองแยกโซน (สัปดาห์นี้)
+                        สถิติการเข้าใช้บริการรายพื้นที่
                     </h4>
-                    <span class="text-[11px] text-slate-400">หน่วย: ครั้ง</span>
+                    <span class="text-[11px] text-slate-400">{{ thaiMonth }} · หน่วย: ครั้ง</span>
                 </div>
-                <div class="pt-2 space-y-4">
-                    <div class="space-y-1.5">
-                        <div class="flex justify-between text-xs">
-                            <span class="font-medium text-slate-700">อาคารวิทยบริการ A (โซนหลัก)</span>
-                            <span class="font-bold text-blue-900">142 ครั้ง</span>
-                        </div>
-                        <div class="w-full h-3 overflow-hidden rounded-full bg-slate-100">
-                            <div class="h-full rounded-full bg-gradient-to-r from-blue-700 to-blue-950" style="width:68%"></div>
-                        </div>
+
+                <!-- Loading skeleton -->
+                <div v-if="serviceLoading" class="pt-2 space-y-4 animate-pulse">
+                    <div v-for="i in 3" :key="i" class="space-y-1.5">
+                        <div class="h-3 rounded bg-slate-100 w-1/2"></div>
+                        <div class="h-3 rounded-full bg-slate-100"></div>
                     </div>
-                    <div class="space-y-1.5">
+                </div>
+
+                <!-- No data -->
+                <div v-else-if="!Object.keys(serviceData).length" class="py-6 text-center text-xs text-slate-400">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> ไม่สามารถโหลดข้อมูลได้
+                </div>
+
+                <!-- Bars -->
+                <div v-else class="pt-2 space-y-4">
+                    <div
+                        v-for="(meta, key) in SERVICE_META" :key="key"
+                        class="space-y-1.5"
+                    >
                         <div class="flex justify-between text-xs">
-                            <span class="font-medium text-slate-700">อาคารวิทยบริการ B (Co-Working Space)</span>
-                            <span class="font-bold text-orange-500">210 ครั้ง</span>
+                            <span class="font-medium text-slate-700">{{ meta.label }}</span>
+                            <span class="font-bold" :class="meta.textClass">
+                                {{ (serviceData[key as keyof ServiceData] ?? 0).toLocaleString() }} ครั้ง
+                            </span>
                         </div>
                         <div class="w-full h-3 overflow-hidden rounded-full bg-slate-100">
-                            <div class="h-full rounded-full bg-gradient-to-r from-orange-400 to-amber-600" style="width:100%"></div>
-                        </div>
-                    </div>
-                    <div class="space-y-1.5">
-                        <div class="flex justify-between text-xs">
-                            <span class="font-medium text-slate-700">MSU SPACE (ห้องศึกษากลุ่ม)</span>
-                            <span class="font-bold text-green-600">95 ครั้ง</span>
-                        </div>
-                        <div class="w-full h-3 overflow-hidden rounded-full bg-slate-100">
-                            <div class="h-full rounded-full bg-gradient-to-r from-green-400 to-emerald-600" style="width:45%"></div>
+                            <div
+                                class="h-full rounded-full bg-gradient-to-r transition-all duration-700"
+                                :class="meta.barClass"
+                                :style="{ width: Math.round(((serviceData[key as keyof ServiceData] ?? 0) / serviceMax) * 100) + '%' }"
+                            ></div>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="flex flex-col justify-between p-6 bg-white border shadow-sm lg:col-span-4 rounded-2xl border-slate-200">
-                <div>
-                    <h4 class="flex items-center gap-2 pb-3 text-sm font-bold border-b text-slate-900 border-slate-100">
-                        <i class="text-orange-500 fa-solid fa-chart-pie"></i>
-                        สัดส่วนประเภทผู้ใช้
-                    </h4>
-                    <div class="flex justify-center py-4">
-                        <svg class="transform -rotate-90 w-28 h-28">
-                            <circle cx="56" cy="56" r="44" fill="transparent" stroke="#f1f5f9" stroke-width="12" />
-                            <circle cx="56" cy="56" r="44" fill="transparent" stroke="#1e40af" stroke-width="12" stroke-dasharray="276.46" stroke-dashoffset="55.29" />
-                            <circle cx="56" cy="56" r="44" fill="transparent" stroke="#f97316" stroke-width="12" stroke-dasharray="276.46" stroke-dashoffset="220.78" />
-                        </svg>
+
+            <!-- getMost: top 5 zone จาก DB เดือนนี้ -->
+            <div class="flex flex-col p-6 bg-white border shadow-sm lg:col-span-4 rounded-2xl border-slate-200">
+                <h4 class="flex items-center gap-2 pb-3 text-sm font-bold border-b text-slate-900 border-slate-100">
+                    <i class="text-orange-500 fa-solid fa-ranking-star"></i>
+                    โซนยอดนิยม Top 5
+                </h4>
+                <p class="text-[10px] text-slate-400 mt-2 mb-3">{{ thaiMonth }}</p>
+
+                <!-- Loading skeleton -->
+                <div v-if="mostLoading" class="space-y-3 animate-pulse">
+                    <div v-for="i in 5" :key="i" class="space-y-1">
+                        <div class="h-2.5 rounded bg-slate-100 w-3/4"></div>
+                        <div class="h-2.5 rounded-full bg-slate-100"></div>
                     </div>
                 </div>
-                <div class="pt-2 space-y-2 text-xs border-t border-slate-50">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded bg-blue-900"></span>
-                            <span class="text-slate-600">นิสิต ป.ตรี</span>
-                        </div>
-                        <span class="font-bold text-slate-700">80%</span>
+
+                <!-- No data -->
+                <div v-else-if="!mostData.length" class="flex-1 flex items-center justify-center py-6 text-xs text-slate-400">
+                    <div class="text-center">
+                        <i class="fa-solid fa-inbox text-xl mb-1 block"></i>
+                        ยังไม่มีข้อมูลเดือนนี้
                     </div>
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded bg-orange-500"></span>
-                            <span class="text-slate-600">ป.โท–เอก / บุคลากร</span>
+                </div>
+
+                <!-- Bars -->
+                <div v-else class="space-y-3 flex-1">
+                    <div v-for="(zone, idx) in mostData" :key="idx" class="space-y-1">
+                        <div class="flex justify-between text-[11px]">
+                            <span class="font-medium text-slate-700 truncate pr-2 leading-tight">
+                                <span class="text-slate-400 font-bold mr-1">#{{ idx + 1 }}</span>{{ zone.title }}
+                            </span>
+                            <span class="font-bold text-slate-600 shrink-0">{{ zone.count.toLocaleString() }}</span>
                         </div>
-                        <span class="font-bold text-slate-700">20%</span>
+                        <div class="w-full h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                                class="h-full rounded-full transition-all duration-700"
+                                :class="ZONE_BARS[idx]"
+                                :style="{ width: Math.round((zone.count / mostMax) * 100) + '%' }"
+                            ></div>
+                        </div>
                     </div>
                 </div>
             </div>
+
         </div>
     </div>
 </template>

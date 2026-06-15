@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Member;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class AdminMemberController extends Controller
 {
@@ -36,5 +37,15 @@ class AdminMemberController extends Controller
         $paginated = $query->orderByDesc('created_at')->paginate(15);
 
         return response()->json($paginated);
+    }
+
+    public function updateCode(Request $request, Member $member)
+    {
+        $request->validate([
+            'code' => ['nullable', 'string', Rule::unique('members', 'code')->ignore($member->id)],
+        ]);
+
+        $member->update(['code' => $request->code ?: null]);
+        return response()->json(['ok' => true, 'code' => $member->code]);
     }
 }

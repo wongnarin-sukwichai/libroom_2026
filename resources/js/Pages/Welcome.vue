@@ -1546,6 +1546,18 @@ const hideToast = () => {
                             </div>
                         </div>
 
+                        <!-- ประเภทการจอง -->
+                        <div v-if="selectedRoom?.confirm_type === 'manual'"
+                            class="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800">
+                            <i class="fa-solid fa-clock-rotate-left mt-0.5 shrink-0"></i>
+                            <span><span class="font-bold">จองได้เฉพาะวันนี้</span> — เจ้าหน้าที่จะอนุมัติเมื่อคุณมาถึง</span>
+                        </div>
+                        <div v-else-if="selectedRoom?.confirm_type === 'auto'"
+                            class="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800">
+                            <i class="fa-solid fa-circle-check mt-0.5 shrink-0"></i>
+                            <span><span class="font-bold">ยืนยันทันที</span> — จองแล้วใช้ได้เลย ตัดโควต้าทันที</span>
+                        </div>
+
                         <!-- อุปกรณ์ในห้อง -->
                         <div v-if="selectedRoom?.tools?.length">
                             <label class="block mb-1.5 text-xs font-bold text-slate-700">
@@ -1570,10 +1582,10 @@ const hideToast = () => {
                                     เลือกช่วงเวลา
                                     <span v-if="usedHoursToday > 0"
                                         class="ml-1.5 font-normal text-amber-600">
-                                        (ใช้ไป {{ usedHoursToday }}/{{ totalQuota }} ชม. รวมทุกโซน — เหลือ {{ quota }} ชม.)
+                                        (ใช้ไป {{ usedHoursToday }}/{{ totalQuota }} ชม. ในโซนนี้ — เหลือ {{ quota }} ชม.)
                                     </span>
                                     <span v-else class="ml-1.5 font-normal text-slate-400">
-                                        (สูงสุด {{ totalQuota }} ชม./วัน รวมทุกโซน)
+                                        (สูงสุด {{ totalQuota }} ชม./วัน ในโซนนี้)
                                     </span>
                                 </label>
                                 <div class="flex items-center gap-3 text-[10px] text-slate-500">

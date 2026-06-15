@@ -61,10 +61,6 @@ const statusConfig: Record<string, { label: string; cls: string }> = {
         label: "ยืนยันแล้ว",
         cls: "bg-emerald-100 text-emerald-700 border-emerald-200",
     },
-    completed: {
-        label: "เสร็จสิ้น",
-        cls: "bg-blue-100 text-blue-700 border-blue-200",
-    },
     cancelled: {
         label: "ยกเลิกแล้ว",
         cls: "bg-red-100 text-red-600 border-red-200",
@@ -173,7 +169,6 @@ onMounted(() => fetch());
                 <option value="pending">รอยืนยัน</option>
                 <option value="confirmed">ยืนยันแล้ว</option>
                 <option value="cancelled">ยกเลิกแล้ว</option>
-                <option value="completed">เสร็จสิ้น</option>
             </select>
             <div class="relative">
                 <input

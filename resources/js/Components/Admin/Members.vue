@@ -28,6 +28,28 @@ const loading   = ref(false);
 const search    = ref('');
 let   searchTimer: ReturnType<typeof setTimeout> | null = null;
 
+const editingCodeId  = ref<number | null>(null);
+const editingCodeVal = ref('');
+const savingCode     = ref(false);
+
+function startEditCode(m: MemberRow) {
+    editingCodeId.value  = m.id;
+    editingCodeVal.value = m.code ?? '';
+}
+function cancelEditCode() {
+    editingCodeId.value = null;
+}
+async function saveCode(m: MemberRow) {
+    savingCode.value = true;
+    try {
+        const res = await axios.put(`/admin/members/${m.id}/code`, { code: editingCodeVal.value || null });
+        m.code = res.data.code;
+        editingCodeId.value = null;
+    } finally {
+        savingCode.value = false;
+    }
+}
+
 const typeConfig: Record<string, string> = {
     'นิสิต ป.ตรี':     'bg-blue-50 text-blue-800 border-blue-200',
     'บัณฑิตศึกษา':     'bg-indigo-50 text-indigo-800 border-indigo-200',
@@ -134,7 +156,34 @@ watch(search, () => {
                                     </div>
                                 </div>
                             </td>
-                            <td class="p-4 font-mono text-slate-600">{{ m.code ?? '—' }}</td>
+                            <td class="p-4">
+                                <div v-if="editingCodeId === m.id" class="flex items-center gap-1">
+                                    <input
+                                        v-model="editingCodeVal"
+                                        type="text"
+                                        class="w-28 text-xs px-2 py-1 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono"
+                                        @keyup.enter="saveCode(m)"
+                                        @keyup.escape="cancelEditCode"
+                                        autofocus
+                                    />
+                                    <button @click="saveCode(m)" :disabled="savingCode" class="text-green-600 hover:text-green-800 p-0.5">
+                                        <i :class="savingCode ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-check'" class="text-xs"></i>
+                                    </button>
+                                    <button @click="cancelEditCode" class="text-slate-400 hover:text-slate-600 p-0.5">
+                                        <i class="fa-solid fa-xmark text-xs"></i>
+                                    </button>
+                                </div>
+                                <div v-else class="flex items-center gap-1.5 group">
+                                    <span class="font-mono text-slate-600">{{ m.code ?? '—' }}</span>
+                                    <button
+                                        @click="startEditCode(m)"
+                                        class="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-600"
+                                        title="แก้ไขรหัส"
+                                    >
+                                        <i class="fa-solid fa-pen text-[10px]"></i>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="hidden p-4 lg:table-cell text-slate-500">{{ m.faculty ?? '—' }}</td>
                             <td class="hidden p-4 xl:table-cell text-slate-500">{{ m.branch ?? '—' }}</td>
                             <td class="p-4">

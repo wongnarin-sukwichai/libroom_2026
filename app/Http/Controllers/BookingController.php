@@ -39,12 +39,17 @@ class BookingController extends Controller
             ->pluck('time_id')
             ->toArray();
 
-        $globalQuota = 3;
-        $usedHours   = 0;
+        $zoneQuota = $zone->zone_daily_quota ?? 3;
+        $usedHours = 0;
         if (Auth::check()) {
-            $usedHours = BookingGroup::where('lead_user_id', Auth::id())
-                ->where('date', $date)
-                ->whereIn('status', ['pending', 'waiting_confirm', 'confirmed'])
+            $usedHours = DB::table('bookings')
+                ->join('booking_groups', 'bookings.group_id', '=', 'booking_groups.id')
+                ->join('rooms', 'rooms.id', '=', 'booking_groups.room_id')
+                ->where('bookings.user_id', Auth::id())
+                ->where('booking_groups.date', $date)
+                ->where('rooms.zone_id', $zone->id)
+                ->whereIn('booking_groups.status', ['pending', 'waiting_confirm', 'confirmed'])
+                ->whereNotIn('bookings.status', ['cancelled'])
                 ->count();
         }
 
@@ -52,7 +57,7 @@ class BookingController extends Controller
             'times'       => $times,
             'booked_ids'  => $bookedIds,
             'used_hours'  => $usedHours,
-            'daily_quota' => $globalQuota,
+            'daily_quota' => $zoneQuota,
         ]);
     }
 
@@ -153,10 +158,11 @@ class BookingController extends Controller
             }
         }
 
-        $zone = $room->zone;
+        $zone      = $room->zone;
+        $zoneQuota = $zone->zone_daily_quota ?? 3;
 
         try {
-            $result = DB::transaction(function () use ($data, $timeIds, $member, $date, $room, $zone) {
+            $result = DB::transaction(function () use ($data, $timeIds, $member, $date, $room, $zone, $zoneQuota) {
 
                 foreach ($timeIds as $timeId) {
                     $taken = BookingGroup::where('room_id', $data['room_id'])
@@ -169,13 +175,17 @@ class BookingController extends Controller
                     if ($taken) throw new \Exception('slot_taken');
                 }
 
-                $globalQuota = 3;
-                $usedHours   = BookingGroup::where('lead_user_id', $member->id)
-                    ->where('date', $date)
-                    ->whereIn('status', ['pending', 'waiting_confirm', 'confirmed'])
+                $usedHours = DB::table('bookings')
+                    ->join('booking_groups', 'bookings.group_id', '=', 'booking_groups.id')
+                    ->join('rooms', 'rooms.id', '=', 'booking_groups.room_id')
+                    ->where('bookings.user_id', $member->id)
+                    ->where('booking_groups.date', $date)
+                    ->where('rooms.zone_id', $zone->id)
+                    ->whereIn('booking_groups.status', ['pending', 'waiting_confirm', 'confirmed'])
+                    ->whereNotIn('bookings.status', ['cancelled'])
                     ->count();
 
-                if ($usedHours + count($timeIds) > $globalQuota) {
+                if ($usedHours + count($timeIds) > $zoneQuota) {
                     throw new \Exception('quota_exceeded');
                 }
 
@@ -240,7 +250,7 @@ class BookingController extends Controller
         } catch (\Exception $e) {
             $msg = match ($e->getMessage()) {
                 'slot_taken'     => 'เสียใจด้วย ช่วงเวลานี้ถูกจองไปแล้ว',
-                'quota_exceeded' => 'เกินโควต้าการจอง (3 ชม./วัน รวมทุกโซน)',
+                'quota_exceeded' => "เกินโควต้าการจอง ({$zoneQuota} ชม./วัน ในโซนนี้)",
                 default          => 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง',
             };
             return response()->json(['message' => $msg], 422);
@@ -323,10 +333,12 @@ class BookingController extends Controller
             return response()->json(['message' => 'ลิงก์นี้หมดอายุแล้ว'], 422);
         }
 
+        $joinZone  = $group->room->zone;
+        $zoneQuota = $joinZone->zone_daily_quota ?? 3;
+
         try {
-            DB::transaction(function () use ($group, $member) {
-                $zone        = $group->room->zone;
-                $minCapacity = $zone->min_capacity ?? 1;
+            DB::transaction(function () use ($group, $member, $joinZone, $zoneQuota) {
+                $minCapacity = $joinZone->min_capacity ?? 1;
 
                 // หา sibling groups (slot อื่นในเซสชันเดียวกัน)
                 $siblings = BookingGroup::where('lead_user_id', $group->lead_user_id)
@@ -344,6 +356,21 @@ class BookingController extends Controller
                 if ($alreadyJoined) throw new \Exception('already_joined');
 
                 if ($member->id === $group->lead_user_id) throw new \Exception('already_joined');
+
+                // เช็ค quota per zone (join กินโควต้าด้วย)
+                $usedHours = DB::table('bookings')
+                    ->join('booking_groups', 'bookings.group_id', '=', 'booking_groups.id')
+                    ->join('rooms', 'rooms.id', '=', 'booking_groups.room_id')
+                    ->where('bookings.user_id', $member->id)
+                    ->where('booking_groups.date', $group->date->format('Y-m-d'))
+                    ->where('rooms.zone_id', $joinZone->id)
+                    ->whereIn('booking_groups.status', ['pending', 'waiting_confirm', 'confirmed'])
+                    ->whereNotIn('bookings.status', ['cancelled'])
+                    ->count();
+
+                if ($usedHours + $siblings->count() > $zoneQuota) {
+                    throw new \Exception('quota_exceeded');
+                }
 
                 // join ทุก slot ในเซสชัน
                 foreach ($siblings as $g) {
@@ -369,8 +396,9 @@ class BookingController extends Controller
 
         } catch (\Exception $e) {
             $msg = match ($e->getMessage()) {
-                'already_joined' => 'คุณอยู่ในกลุ่มนี้แล้ว',
-                default          => 'เกิดข้อผิดพลาด กรุณาลองใหม่',
+                'already_joined'  => 'คุณอยู่ในกลุ่มนี้แล้ว',
+                'quota_exceeded'  => "เกินโควต้าการจอง ({$zoneQuota} ชม./วัน ในโซนนี้)",
+                default           => 'เกิดข้อผิดพลาด กรุณาลองใหม่',
             };
             return response()->json(['message' => $msg], 422);
         }

@@ -8,6 +8,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',
+        api: __DIR__ . '/../routes/api.php',
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
     )
@@ -19,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role.admin' => \App\Http\Middleware\EnsureAdminRole::class,
+            'api.token'  => \App\Http\Middleware\CheckApiToken::class,
         ]);
 
         $middleware->redirectGuestsTo(fn ($request) => route('auth.google'));

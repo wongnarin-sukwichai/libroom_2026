@@ -41,4 +41,9 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI', 'http://localhost/auth/google/callback'),
     ],
 
+    'libroom' => [
+        'api_token'    => env('LIBROOM_API_TOKEN'),     // token สำหรับเรียก external API (ระบบเก่า)
+        'v2_api_token' => env('LIBROOM_V2_API_TOKEN'),  // token สำหรับ API ของระบบใหม่นี้
+    ],
+
 ];

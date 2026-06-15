@@ -26,7 +26,7 @@ class AdminBookingController extends Controller
             'admin'              => fn($q) => $q->select('id', 'name', 'email'),
         ])
         ->where('date', $date)
-        ->orderByRaw("FIELD(status, 'pending', 'waiting_confirm', 'confirmed', 'completed', 'cancelled')")
+        ->orderByRaw("FIELD(status, 'pending', 'waiting_confirm', 'confirmed', 'cancelled')")
         ->orderBy('lead_user_id')
         ->orderBy('room_id')
         ->orderBy('time_id');
@@ -194,10 +194,18 @@ class AdminBookingController extends Controller
     {
         $ids = $request->validate(['ids' => 'required|array', 'ids.*' => 'integer'])['ids'];
 
-        $groups = BookingGroup::whereIn('id', $ids)->where('status', 'pending')->get();
+        $groups = BookingGroup::whereIn('id', $ids)
+            ->whereIn('status', ['pending', 'waiting_confirm'])
+            ->get();
+
+        $now = Carbon::now('Asia/Bangkok');
+
         foreach ($groups as $g) {
             $g->update(['status' => 'confirmed']);
-            $g->bookings()->update(['status' => 'confirmed']);
+            $g->bookings()->whereNotIn('status', ['cancelled'])->update([
+                'status'     => 'checked_in',
+                'checkin_at' => $now,
+            ]);
         }
 
         return response()->json(['message' => 'อนุมัติสำเร็จ', 'count' => $groups->count()]);
