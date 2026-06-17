@@ -554,7 +554,7 @@ const hideToast = () => {
                     </div>
                     <div v-if="!authUser">
                         <a
-                            href="/auth/google"
+                            href="/libroom/auth/google"
                             class="bg-white hover:bg-blue-950 text-slate-950 hover:text-white font-semibold px-3 py-1 rounded shadow transition-all flex items-center gap-1 text-[11px] md:text-xs"
                         >
                             <i class="fa-brands fa-google"></i>
@@ -710,13 +710,13 @@ const hideToast = () => {
 
             <!-- แบนเนอร์วันหยุด -->
             <div v-if="props.todayIsHoliday"
-                class="max-w-2xl mx-auto mb-8 flex items-center gap-4 p-4 bg-red-50 border border-red-200 rounded-2xl shadow-sm"
+                class="flex items-center max-w-2xl gap-4 p-4 mx-auto mb-8 border border-red-200 shadow-sm bg-red-50 rounded-2xl"
             >
-                <div class="flex items-center justify-center w-12 h-12 shrink-0 bg-red-100 rounded-xl">
-                    <i class="fa-solid fa-calendar-xmark text-xl text-red-500"></i>
+                <div class="flex items-center justify-center w-12 h-12 bg-red-100 shrink-0 rounded-xl">
+                    <i class="text-xl text-red-500 fa-solid fa-calendar-xmark"></i>
                 </div>
                 <div>
-                    <div class="font-bold text-sm text-red-700">งดให้บริการเนื่องในวันหยุดและวันหยุดนักขัตฤกษ์</div>
+                    <div class="text-sm font-bold text-red-700">งดให้บริการเนื่องในวันหยุดและวันหยุดนักขัตฤกษ์</div>
                     <div class="text-xs text-red-500 mt-0.5">ไม่สามารถจองใช้บริการได้ในวันนี้ กรุณากลับมาจองในวันทำการถัดไป</div>
                 </div>
             </div>
@@ -1482,7 +1482,7 @@ const hideToast = () => {
                         <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
                         <div>
                             <span>{{ t("bookingLoginAlert") }}</span>
-                            <a href="/auth/google" class="text-blue-900 hover:underline font-bold flex items-center gap-1 mt-1.5">
+                            <a href="/libroom/auth/google" class="text-blue-900 hover:underline font-bold flex items-center gap-1 mt-1.5">
                                 <i class="fa-brands fa-google"></i>
                                 เข้าสู่ระบบด้วย Google
                             </a>
@@ -1507,7 +1507,7 @@ const hideToast = () => {
                         >
                             <!-- แถวหัว: ชื่อห้อง + badge สถานะ -->
                             <div class="flex items-center justify-between gap-2">
-                                <div class="font-bold text-sm text-slate-900">{{ room.title }}</div>
+                                <div class="text-sm font-bold text-slate-900">{{ room.title }}</div>
                                 <span
                                     :class="{
                                         'bg-red-100 text-red-700 border-red-200':      room.status === '1',
@@ -1549,11 +1549,11 @@ const hideToast = () => {
                         <div class="flex items-center gap-2">
                             <button type="button" @click="selectedRoom = null; availableTimes = []"
                                 v-if="selectedZone?.rooms?.length > 1"
-                                class="text-xs text-blue-700 hover:underline flex items-center gap-1">
+                                class="flex items-center gap-1 text-xs text-blue-700 hover:underline">
                                 <i class="fa-solid fa-chevron-left"></i> เปลี่ยนห้อง
                             </button>
                             <div class="text-xs font-bold text-slate-700">
-                                <i class="fa-solid fa-door-open mr-1 text-slate-400"></i>
+                                <i class="mr-1 fa-solid fa-door-open text-slate-400"></i>
                                 {{ selectedRoom?.title }}
                             </div>
                         </div>
@@ -1602,36 +1602,36 @@ const hideToast = () => {
                                 </label>
                                 <div class="flex items-center gap-3 text-[10px] text-slate-500">
                                     <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-blue-600 rounded"></span>เลือก</span>
-                                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-slate-200 rounded"></span>ไม่พร้อม</span>
+                                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-200"></span>ไม่พร้อม</span>
                                     <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-red-200 rounded"></span>ไม่ว่าง</span>
                                 </div>
                             </div>
 
                             <!-- วันหยุดนักขัตฤกษ์ -->
                             <div v-if="props.todayIsHoliday"
-                                class="py-6 text-center border border-dashed border-red-200 rounded-lg bg-red-50">
-                                <i class="fa-solid fa-calendar-xmark text-lg text-red-400 mb-1"></i>
+                                class="py-6 text-center border border-red-200 border-dashed rounded-lg bg-red-50">
+                                <i class="mb-1 text-lg text-red-400 fa-solid fa-calendar-xmark"></i>
                                 <div class="text-xs font-bold text-red-600">งดให้บริการเนื่องในวันหยุดนักขัตฤกษ์</div>
                                 <div class="text-[11px] text-red-400 mt-0.5">ไม่สามารถจองใช้บริการในวันนี้ได้</div>
                             </div>
 
                             <!-- โควต้าหมด -->
                             <div v-else-if="quota <= 0"
-                                class="py-6 text-center border border-dashed border-amber-200 rounded-lg bg-amber-50">
-                                <i class="fa-solid fa-circle-exclamation text-base text-amber-400 mb-1"></i>
+                                class="py-6 text-center border border-dashed rounded-lg border-amber-200 bg-amber-50">
+                                <i class="mb-1 text-base fa-solid fa-circle-exclamation text-amber-400"></i>
                                 <div class="text-xs font-bold text-amber-700">โควต้าการจองหมดแล้ว</div>
                                 <div class="text-[11px] text-amber-500 mt-0.5">คุณใช้ครบ {{ totalQuota }} ชม./วัน ในโซนนี้แล้ว</div>
                             </div>
 
                             <!-- Loading -->
-                            <div v-else-if="isFetchingSlots" class="py-6 text-center text-xs text-slate-400">
-                                <i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังโหลดช่วงเวลา...
+                            <div v-else-if="isFetchingSlots" class="py-6 text-xs text-center text-slate-400">
+                                <i class="mr-1 fa-solid fa-spinner fa-spin"></i> กำลังโหลดช่วงเวลา...
                             </div>
 
                             <!-- ไม่มีข้อมูล -->
                             <div v-else-if="!availableTimes.length"
-                                class="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                                <i class="fa-solid fa-calendar-xmark mr-1"></i> ไม่มีช่วงเวลาให้บริการในวันนี้
+                                class="py-6 text-xs text-center border border-dashed rounded-lg text-slate-400 border-slate-200">
+                                <i class="mr-1 fa-solid fa-calendar-xmark"></i> ไม่มีช่วงเวลาให้บริการในวันนี้
                             </div>
 
                             <!-- Slot Grid -->
@@ -1708,12 +1708,12 @@ const hideToast = () => {
                 </div>
                 <div class="p-6 space-y-4">
                     <!-- Progress -->
-                    <div class="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                        <div class="flex items-center justify-between text-xs mb-2">
+                    <div class="p-4 border border-blue-200 bg-blue-50 rounded-xl">
+                        <div class="flex items-center justify-between mb-2 text-xs">
                             <span class="font-semibold text-blue-900">สมาชิกในกลุ่ม</span>
                             <span class="font-bold text-blue-900">{{ joinCapacity.current }} / {{ joinCapacity.need }} คน</span>
                         </div>
-                        <div class="w-full h-2 bg-blue-200 rounded-full overflow-hidden">
+                        <div class="w-full h-2 overflow-hidden bg-blue-200 rounded-full">
                             <div class="h-full bg-blue-600 rounded-full"
                                 :style="{ width: Math.min(100, (joinCapacity.current / joinCapacity.need) * 100) + '%' }">
                             </div>
@@ -1730,7 +1730,7 @@ const hideToast = () => {
                             <input
                                 :value="joinUrl"
                                 readonly
-                                class="flex-1 text-xs px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-600 truncate focus:outline-none"
+                                class="flex-1 px-3 py-2 text-xs truncate border rounded-lg border-slate-200 bg-slate-50 text-slate-600 focus:outline-none"
                             />
                             <button
                                 @click="copyJoinUrl"
@@ -1743,7 +1743,7 @@ const hideToast = () => {
                     </div>
 
                     <p class="text-[11px] text-slate-400 text-center">
-                        <i class="fa-solid fa-clock mr-1"></i>
+                        <i class="mr-1 fa-solid fa-clock"></i>
                         ลิงก์มีอายุ 15 นาที — หากครบกำหนดแล้วยังไม่ครบกลุ่ม ระบบจะยกเลิกอัตโนมัติ
                     </p>
 

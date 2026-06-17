@@ -60,31 +60,31 @@ Route::middleware('auth:admin')->group(function () {
 });
 
 // Dev only — simulate member/admin login (ลบออกก่อน deploy จริง)
-if (app()->environment('local')) {
-    Route::get('/dev/login-as-member', function () {
-        $member = \App\Models\Member::where('email', 'test.member@msu.ac.th')->firstOrFail();
-        \Illuminate\Support\Facades\Auth::login($member);
-        return redirect()->route('welcome');
-    })->name('dev.login-member');
+// if (app()->environment('local')) {
+//     Route::get('/dev/login-as-member', function () {
+//         $member = \App\Models\Member::where('email', 'test.member@msu.ac.th')->firstOrFail();
+//         \Illuminate\Support\Facades\Auth::login($member);
+//         return redirect()->route('welcome');
+//     })->name('dev.login-member');
 
-    Route::get('/dev/login-as-member2', function () {
-        $member = \App\Models\Member::where('email', 'test.member2@msu.ac.th')->firstOrFail();
-        \Illuminate\Support\Facades\Auth::login($member);
-        return redirect()->route('welcome');
-    })->name('dev.login-member2');
+//     Route::get('/dev/login-as-member2', function () {
+//         $member = \App\Models\Member::where('email', 'test.member2@msu.ac.th')->firstOrFail();
+//         \Illuminate\Support\Facades\Auth::login($member);
+//         return redirect()->route('welcome');
+//     })->name('dev.login-member2');
 
-    Route::get('/dev/login-as-member3', function () {
-        $member = \App\Models\Member::where('email', 'test.member3@msu.ac.th')->firstOrFail();
-        \Illuminate\Support\Facades\Auth::login($member);
-        return redirect()->route('welcome');
-    })->name('dev.login-member3');
+//     Route::get('/dev/login-as-member3', function () {
+//         $member = \App\Models\Member::where('email', 'test.member3@msu.ac.th')->firstOrFail();
+//         \Illuminate\Support\Facades\Auth::login($member);
+//         return redirect()->route('welcome');
+//     })->name('dev.login-member3');
 
-    Route::get('/dev/login-as-admin', function () {
-        $admin = \App\Models\User::where('email', 'wongnarin.s@msu.ac.th')->firstOrFail();
-        \Illuminate\Support\Facades\Auth::guard('admin')->login($admin);
-        return redirect()->route('admin.dashboard');
-    })->name('dev.login-admin');
-}
+//     Route::get('/dev/login-as-admin', function () {
+//         $admin = \App\Models\User::where('email', 'wongnarin.s@msu.ac.th')->firstOrFail();
+//         \Illuminate\Support\Facades\Auth::guard('admin')->login($admin);
+//         return redirect()->route('admin.dashboard');
+//     })->name('dev.login-admin');
+// }
 
 Route::get('/rooms/{room}/slots', [BookingController::class, 'slots'])->name('booking.slots');
 Route::post('/bookings', [BookingController::class, 'store'])->middleware('auth')->name('booking.store');

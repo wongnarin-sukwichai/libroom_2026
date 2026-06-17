@@ -110,8 +110,8 @@ const openStaffBooking = async () => {
     sbBookedIds.value        = [];
     sbSelectedTimeIds.value  = [];
     try {
-        const res         = await fetch('/api/locations');
-        sbLocations.value = await res.json();
+        const res = await axios.get('/api/locations');
+        sbLocations.value = res.data;
         if (sbLocations.value.length) sbActiveLoc.value = sbLocations.value[0];
     } finally {
         sbLoading.value = false;
@@ -122,10 +122,11 @@ const sbFetchSlots = async () => {
     if (!sbSelectedRoom.value || !sbDate.value) return;
     sbFetchingSlots.value = true;
     try {
-        const res             = await fetch(`/rooms/${sbSelectedRoom.value.id}/slots?date=${sbDate.value}`);
-        const data            = await res.json();
-        sbTimes.value         = data.times;
-        sbBookedIds.value     = data.booked_ids;
+        const { data } = await axios.get(`/rooms/${sbSelectedRoom.value.id}/slots`, {
+            params: { date: sbDate.value },
+        });
+        sbTimes.value           = data.times;
+        sbBookedIds.value       = data.booked_ids;
         sbSelectedTimeIds.value = [];
     } finally {
         sbFetchingSlots.value = false;
@@ -206,7 +207,7 @@ const logoutAdmin = async () => {
         cancelButtonText: "ยกเลิก",
         reverseButtons: true,
     });
-    if (result.isConfirmed) router.post("/logout");
+    if (result.isConfirmed) router.post(`${window.APP_BASE ?? ''}/logout`);
 };
 </script>
 
@@ -536,7 +537,7 @@ const logoutAdmin = async () => {
                             <div class="flex justify-end">
                                 <button
                                     @click="openStaffBooking"
-                                    class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition-all"
+                                    class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white transition-all bg-indigo-600 shadow hover:bg-indigo-700 rounded-xl"
                                 >
                                     <i class="fa-solid fa-calendar-plus"></i>
                                     จองห้องสำหรับเจ้าหน้าที่
@@ -572,23 +573,23 @@ const logoutAdmin = async () => {
                 <!-- Header -->
                 <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                     <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-calendar-plus text-indigo-500"></i>
+                        <i class="text-indigo-500 fa-solid fa-calendar-plus"></i>
                         <h3 class="text-sm font-bold text-slate-900">จองห้องสำหรับเจ้าหน้าที่</h3>
                     </div>
                     <button @click="showStaffBooking = false" class="text-slate-400 hover:text-slate-700">
-                        <i class="fa-solid fa-xmark text-base"></i>
+                        <i class="text-base fa-solid fa-xmark"></i>
                     </button>
                 </div>
 
                 <div class="p-5 space-y-4">
                     <!-- Loading -->
-                    <div v-if="sbLoading" class="py-8 text-center text-xs text-slate-400">
-                        <i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังโหลด...
+                    <div v-if="sbLoading" class="py-8 text-xs text-center text-slate-400">
+                        <i class="mr-1 fa-solid fa-spinner fa-spin"></i> กำลังโหลด...
                     </div>
 
                     <template v-else>
                         <!-- Location tabs -->
-                        <div class="flex gap-2 flex-wrap">
+                        <div class="flex flex-wrap gap-2">
                             <button
                                 v-for="loc in sbLocations" :key="loc.id"
                                 @click="sbActiveLoc = loc; sbSelectedRoom = null; sbTimes = []; sbSelectedTimeIds = []"
@@ -627,7 +628,7 @@ const logoutAdmin = async () => {
                             <div>
                                 <label class="text-xs font-bold text-slate-700 block mb-1.5">เลือกวันที่</label>
                                 <input type="date" v-model="sbDate" :min="sbTodayStr"
-                                    class="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+                                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200" />
                             </div>
 
                             <div>
@@ -638,8 +639,8 @@ const logoutAdmin = async () => {
                                         <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-red-200 rounded"></span>ไม่ว่าง</span>
                                     </div>
                                 </div>
-                                <div v-if="sbFetchingSlots" class="py-5 text-center text-xs text-slate-400">
-                                    <i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังโหลด...
+                                <div v-if="sbFetchingSlots" class="py-5 text-xs text-center text-slate-400">
+                                    <i class="mr-1 fa-solid fa-spinner fa-spin"></i> กำลังโหลด...
                                 </div>
                                 <div v-else-if="sbTimes.length" class="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
                                     <button v-for="slot in sbTimes" :key="slot.id" type="button"
@@ -653,7 +654,7 @@ const logoutAdmin = async () => {
                                         class="px-1 py-2.5 text-[11px] border rounded-lg text-center transition-all font-medium"
                                     >{{ slot.start }}–{{ slot.end }}</button>
                                 </div>
-                                <div v-else-if="sbDate" class="py-5 text-center text-xs text-slate-400 border border-dashed rounded-lg">
+                                <div v-else-if="sbDate" class="py-5 text-xs text-center border border-dashed rounded-lg text-slate-400">
                                     ไม่มีช่วงเวลาให้บริการในวันนี้
                                 </div>
                             </div>

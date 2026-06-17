@@ -15,6 +15,7 @@
         <!-- Font Awesome -->
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
+        <script>window.APP_BASE = @json(rtrim(parse_url(config('app.url'), PHP_URL_PATH) ?: '', '/'));</script>
         <!-- Scripts -->
         @routes
         @vite(['resources/js/app.js', "resources/js/Pages/{$page['component']}.vue"])

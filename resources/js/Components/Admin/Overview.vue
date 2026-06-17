@@ -50,10 +50,15 @@ onMounted(async () => {
         totalRooms.value     = statsRes.value.data.total_rooms;
         totalMembers.value   = statsRes.value.data.total_members;
     }
-    if (svcRes.status === 'fulfilled') serviceData.value = svcRes.value.data;
+    if (svcRes.status === 'fulfilled') {
+    const d = svcRes.value.data;
+    serviceData.value = (d && typeof d === 'object' && !Array.isArray(d)) ? d : {};
+    }
     serviceLoading.value = false;
 
-    if (mostRes.status === 'fulfilled') mostData.value = mostRes.value.data;
+if (mostRes.status === 'fulfilled') {
+    mostData.value = Array.isArray(mostRes.value.data) ? mostRes.value.data : [];
+    }
     mostLoading.value = false;
 });
 </script>
@@ -185,14 +190,14 @@ onMounted(async () => {
                 <!-- Loading skeleton -->
                 <div v-if="serviceLoading" class="pt-2 space-y-4 animate-pulse">
                     <div v-for="i in 3" :key="i" class="space-y-1.5">
-                        <div class="h-3 rounded bg-slate-100 w-1/2"></div>
+                        <div class="w-1/2 h-3 rounded bg-slate-100"></div>
                         <div class="h-3 rounded-full bg-slate-100"></div>
                     </div>
                 </div>
 
                 <!-- No data -->
-                <div v-else-if="!Object.keys(serviceData).length" class="py-6 text-center text-xs text-slate-400">
-                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> ไม่สามารถโหลดข้อมูลได้
+                <div v-else-if="!Object.keys(serviceData).length" class="py-6 text-xs text-center text-slate-400">
+                    <i class="mr-1 fa-solid fa-triangle-exclamation"></i> ไม่สามารถโหลดข้อมูลได้
                 </div>
 
                 <!-- Bars -->
@@ -209,7 +214,7 @@ onMounted(async () => {
                         </div>
                         <div class="w-full h-3 overflow-hidden rounded-full bg-slate-100">
                             <div
-                                class="h-full rounded-full bg-gradient-to-r transition-all duration-700"
+                                class="h-full transition-all duration-700 rounded-full bg-gradient-to-r"
                                 :class="meta.barClass"
                                 :style="{ width: Math.round(((serviceData[key as keyof ServiceData] ?? 0) / serviceMax) * 100) + '%' }"
                             ></div>
@@ -235,25 +240,25 @@ onMounted(async () => {
                 </div>
 
                 <!-- No data -->
-                <div v-else-if="!mostData.length" class="flex-1 flex items-center justify-center py-6 text-xs text-slate-400">
+                <div v-else-if="!mostData.length" class="flex items-center justify-center flex-1 py-6 text-xs text-slate-400">
                     <div class="text-center">
-                        <i class="fa-solid fa-inbox text-xl mb-1 block"></i>
+                        <i class="block mb-1 text-xl fa-solid fa-inbox"></i>
                         ยังไม่มีข้อมูลเดือนนี้
                     </div>
                 </div>
 
                 <!-- Bars -->
-                <div v-else class="space-y-3 flex-1">
+                <div v-else class="flex-1 space-y-3">
                     <div v-for="(zone, idx) in mostData" :key="idx" class="space-y-1">
                         <div class="flex justify-between text-[11px]">
-                            <span class="font-medium text-slate-700 truncate pr-2 leading-tight">
-                                <span class="text-slate-400 font-bold mr-1">#{{ idx + 1 }}</span>{{ zone.title }}
+                            <span class="pr-2 font-medium leading-tight truncate text-slate-700">
+                                <span class="mr-1 font-bold text-slate-400">#{{ idx + 1 }}</span>{{ zone.title }}
                             </span>
-                            <span class="font-bold text-slate-600 shrink-0">{{ zone.count.toLocaleString() }}</span>
+                            <span class="font-bold text-slate-600 shrink-0">{{ (zone.count ?? 0).toLocaleString() }}</span>
                         </div>
                         <div class="w-full h-2 overflow-hidden rounded-full bg-slate-100">
                             <div
-                                class="h-full rounded-full transition-all duration-700"
+                                class="h-full transition-all duration-700 rounded-full"
                                 :class="ZONE_BARS[idx]"
                                 :style="{ width: Math.round((zone.count / mostMax) * 100) + '%' }"
                             ></div>
