@@ -632,22 +632,26 @@ const hideToast = () => {
                         <i class="text-blue-600 fa-solid fa-file-shield"></i>
                         <span>{{ t("navRules") }}</span>
                     </button>
-                    <button
-                        @click="openModal('manual')"
+                    <a
+                        href="/pdf/tools.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
                         class="flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-all font-medium"
                     >
                         <i class="text-orange-500 fa-solid fa-book-open"></i>
                         <span>{{ t("navManual") }}</span>
-                    </button>
-                    <button
-                        @click="openModal('evaluation')"
+                    </a>
+                    <a
+                        href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
+                        target="_blank"
+                        rel="noopener noreferrer"
                         class="flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-all font-medium"
                     >
                         <i
                             class="text-green-600 fa-solid fa-square-poll-vertical"
                         ></i>
                         <span>{{ t("navFeedback") }}</span>
-                    </button>
+                    </a>
                 </nav>
             </div>
         </header>
@@ -938,7 +942,9 @@ const hideToast = () => {
                         <ul class="space-y-2 text-xs text-slate-400">
                             <li>
                                 <a
-                                    href="#"
+                                    href="https://library.msu.ac.th"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     class="transition-colors hover:text-amber-400"
                                     ><i
                                         class="fa-solid fa-chevron-right text-[8px] mr-1"
@@ -958,26 +964,30 @@ const hideToast = () => {
                                 </button>
                             </li>
                             <li>
-                                <button
-                                    @click="openModal('manual')"
+                                <a
+                                    href="/pdf/tools.pdf"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     class="text-left transition-colors hover:text-amber-400"
                                 >
                                     <i
                                         class="fa-solid fa-chevron-right text-[8px] mr-1"
                                     ></i>
                                     <span>{{ t("navManual") }}</span>
-                                </button>
+                                </a>
                             </li>
                             <li>
-                                <button
-                                    @click="openModal('evaluation')"
+                                <a
+                                    href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     class="text-left transition-colors hover:text-amber-400"
                                 >
                                     <i
                                         class="fa-solid fa-chevron-right text-[8px] mr-1"
                                     ></i>
                                     <span>{{ t("navFeedback") }}</span>
-                                </button>
+                                </a>
                             </li>
                         </ul>
                     </div>
@@ -1011,7 +1021,9 @@ const hideToast = () => {
                                 <span>MSU Academic Resource Center</span>
                             </a>
                             <a
-                                href="#"
+                                href="https://library.msu.ac.th"
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 class="flex items-center gap-2 transition-colors hover:text-amber-400"
                             >
                                 <i
