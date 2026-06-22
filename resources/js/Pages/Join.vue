@@ -41,7 +41,7 @@ const handleJoin = async () => {
 
     joining.value = true;
     try {
-        const res = await fetch(`/join/${props.group.token}`, {
+        const res = await fetch(`${window.APP_BASE ?? ''}/join/${props.group.token}`, {
             method: 'POST',
             headers: {
                 'Accept':        'application/json',
@@ -63,7 +63,7 @@ const handleJoin = async () => {
             confirmButtonColor: '#1e3a5f',
         });
 
-        router.visit('/my-bookings');
+        router.visit(`${window.APP_BASE ?? ''}/my-bookings`);
 
     } finally {
         joining.value = false;

@@ -44,7 +44,7 @@ const cancelBooking = async (id, booking) => {
 
     cancelling.value = id;
     try {
-        const res = await fetch(`/booking-groups/${id}/cancel`, {
+        const res = await fetch(`${window.APP_BASE ?? ''}/booking-groups/${id}/cancel`, {
             method: 'POST',
             headers: {
                 'Accept':        'application/json',
@@ -62,7 +62,7 @@ const formatDate = (dateStr) => {
     return d.toLocaleDateString('th-TH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-const handleLogout = () => router.post('/logout');
+const handleLogout = () => router.post(`${window.APP_BASE ?? ''}/logout`);
 
 const copyLink = (url) => {
     navigator.clipboard.writeText(url);

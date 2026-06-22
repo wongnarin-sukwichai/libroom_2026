@@ -233,7 +233,7 @@ const handleLogout = async () => {
     });
 
     if (result.isConfirmed) {
-        router.post("/logout");
+        router.post(`${window.APP_BASE ?? ''}/logout`);
     }
 };
 
@@ -266,13 +266,22 @@ const fetchSlots = async () => {
     if (!selectedRoom.value || !bookingForm.value.date) return;
     isFetchingSlots.value = true;
     try {
-        const res  = await fetch(`/rooms/${selectedRoom.value.id}/slots?date=${bookingForm.value.date}`);
+        const res = await fetch(`${window.APP_BASE ?? ''}/rooms/${selectedRoom.value.id}/slots?date=${bookingForm.value.date}`);
+        if (!res.ok) {
+            const text = await res.text();
+            console.error('Slots API error', res.status, text);
+            availableTimes.value = [];
+            return;
+        }
         const data = await res.json();
-        availableTimes.value              = data.times;
+        availableTimes.value              = data.times ?? [];
         bookedTimeIds.value               = data.booked_ids;
         usedHoursToday.value              = data.used_hours  ?? 0;
         dailyQuota.value                  = data.daily_quota ?? 3;
         bookingForm.value.selectedTimeIds = [];
+    } catch (e) {
+        console.error('fetchSlots failed:', e);
+        availableTimes.value = [];
     } finally {
         isFetchingSlots.value = false;
     }
@@ -357,7 +366,7 @@ const handleBookingSubmit = async () => {
 
     isSubmitting.value = true;
     try {
-        const res = await fetch('/bookings', {
+        const res = await fetch(`${window.APP_BASE ?? ''}/bookings`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
