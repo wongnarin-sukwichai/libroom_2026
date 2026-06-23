@@ -8,6 +8,8 @@ const props = defineProps({
     todayDate:      { type: String,  default: () => new Date().toISOString().split('T')[0] },
 });
 
+const appBase = window.APP_BASE ?? '';
+
 // คืนชื่อ location ตามภาษาปัจจุบัน
 const locTitle = (loc) =>
     currentLang.value === 'en'
@@ -575,7 +577,7 @@ const hideToast = () => {
                             <i class="fa-solid fa-circle-user"></i>
                             <span class="ml-1">{{ authUser.name }}</span>
                         </span>
-                        <a :href="`${window.APP_BASE ?? ''}/my-bookings`"
+                        <a :href="`${appBase}/my-bookings`"
                             class="bg-white/20 hover:bg-white/30 text-white px-2 py-0.5 rounded text-[10px] transition-all flex items-center gap-1">
                             <i class="fa-solid fa-calendar-check"></i>
                             <span>การจองของฉัน</span>
