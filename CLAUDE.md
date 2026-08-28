@@ -69,6 +69,10 @@ bookings
 members    (login ด้วย Google OAuth, มี code สำหรับ kiosk)
 holidays   (วันหยุดนักขัตฤกษ์)
 kiosk_bypass_codes  (รหัสพิเศษสำหรับเจ้าหน้าที่ ผ่านได้ตลอด)
+settings   (key–value config ทั้งระบบ)
+  ├── booking_window_enabled  '1' = จำกัดเวลาเปิดจอง, '0' = ไม่จำกัด
+  ├── booking_open_time       เวลาเปิดให้กดจอง เช่น "06:00"
+  └── booking_close_time      เวลาปิดรับจอง เช่น "19:00"
 ```
 
 ---
@@ -76,6 +80,7 @@ kiosk_bypass_codes  (รหัสพิเศษสำหรับเจ้า�
 ## Business Rules
 
 - **Booking date**: จองได้เฉพาะ **วันนี้เท่านั้น** (date ถูก lock ที่ today จาก server)
+- **Booking window**: กดจองได้เฉพาะช่วง `booking_open_time`–`booking_close_time` (global, อ้างอิงเวลา server Asia/Bangkok) — บังคับที่ `BookingController@store` ผ่าน `App\Support\BookingWindow`; staff/admin ใช้ `/admin/bookings/staff` จึงไม่ติด gate นี้; การ join session ที่ leader สร้างไว้แล้วไม่ถูกบล็อก
 - **Quota**: 1 user จองได้ไม่เกิน `zone_daily_quota` ชั่วโมง/วัน/zone (ส่วนใหญ่ = 3 ชม.)
 - **Time slots**: generate จาก times config → 1 ชั่วโมงต่อ slot, ไม่กรอง past slots
 - **Weekday/Weekend**: เช็คจากวันที่ → ใช้ time_weekday หรือ time_weekend ของ zone
@@ -120,6 +125,7 @@ kiosk_bypass_codes  (รหัสพิเศษสำหรับเจ้า�
 | GET/PUT | `/admin/members` | จัดการ members |
 | GET/POST/PUT/DELETE | `/admin/users` | จัดการ admin users |
 | GET/POST/DELETE | `/admin/kiosk-bypass` | จัดการ kiosk bypass codes |
+| GET/PUT | `/admin/settings` | ช่วงเวลาเปิด-ปิดระบบจอง (global) — แท็บ Service Hours |
 
 ### API (api.token middleware)
 
@@ -143,11 +149,12 @@ kiosk_bypass_codes  (รหัสพิเศษสำหรับเจ้า�
 
 **Admin Panel (Dashboard.vue — SPA แบบ tab):**
 - [x] Overview: สถิติภาพรวม
-- [x] Bookings: รายการจอง + approve/reject
+- [x] Bookings: แยก tab (รอดำเนินการ / จองล่วงหน้า / ยืนยันแล้ว / ยกเลิก) + ค้นหา ชื่อ/อีเมล/ห้อง + filter วันที่ + approve/reject (รองรับทั้ง pending และ waiting_confirm) + paginate 10/หน้า
+  - tab "จองล่วงหน้า" = booking `date > วันนี้` (ปุ่ม "จองล่วงหน้า" เดิมชื่อ "จองห้องสำหรับเจ้าหน้าที่" → `staffStore`)
 - [x] Members: จัดการ member + member code
 - [x] Rooms: toggle เปิด/ปิด location/zone/room + แก้ไข zone settings
 - [x] Holidays: เพิ่ม/ลบวันหยุด
-- [x] Service Hours: จัดการ times config
+- [x] Service Hours: จัดการ times config + ช่วงเวลาเปิด-ปิดระบบจอง (booking window, global)
 - [x] Admin Users: จัดการ admin accounts (role: admin/staff)
 - [x] Kiosk Access: จัดการ bypass codes
 
@@ -180,6 +187,8 @@ kiosk_bypass_codes  (รหัสพิเศษสำหรับเจ้า�
 | `app/Http/Controllers/LocationController.php` | โหลด Welcome page data |
 | `app/Http/Controllers/BookingController.php` | slots, store, myBookings, cancel, join |
 | `app/Http/Controllers/KioskController.php` | Kiosk access check |
+| `app/Support/BookingWindow.php` | Logic ช่วงเวลาเปิด-ปิดระบบจอง (อ่านจาก `settings`) |
+| `app/Http/Controllers/Admin/AdminSettingController.php` | GET/PUT `/admin/settings` |
 | `app/Http/Controllers/Admin/` | Admin controllers ทั้งหมด |
 | `app/Http/Controllers/Auth/GoogleController.php` | Google OAuth |
 | `resources/js/Pages/Welcome.vue` | หน้าหลัก (booking modal) |

@@ -39,23 +39,41 @@ const paginated = ref<Paginated>({
     pending_count: 0,
 });
 const loading = ref(false);
-const filterStatus = ref("");
-const filterDate = ref(new Date().toISOString().split("T")[0]);
+
+const tabs = [
+    { key: "pending", label: "รอดำเนินการ", icon: "fa-clock" },
+    { key: "confirmed", label: "ยืนยันแล้ว", icon: "fa-circle-check" },
+    { key: "cancelled", label: "ยกเลิก / ปฏิเสธ", icon: "fa-ban" },
+    { key: "upcoming", label: "จองล่วงหน้า", icon: "fa-calendar-plus" },
+];
+type TabKey = "pending" | "upcoming" | "confirmed" | "cancelled";
+const activeTab = ref<TabKey>("pending");
+
+const todayStr = () => new Date().toISOString().split("T")[0];
+
+const search = ref("");
+const filterDate = ref(todayStr());
+
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+function onSearchInput() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => fetch(1), 350);
+}
 
 const fmtDate = (iso: string) => {
-    if (!iso) return '';
-    const [y, m, d] = iso.split('-');
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
     return `${d}/${m}/${y}`;
 };
 
 const statusConfig: Record<string, { label: string; cls: string }> = {
     pending: {
-        label: "รอยืนยัน",
-        cls: "bg-amber-100 text-amber-700 border-amber-200 animate-pulse",
+        label: "รอสมาชิกครบ",
+        cls: "bg-amber-100 text-amber-700 border-amber-200",
     },
     waiting_confirm: {
         label: "รอเจ้าหน้าที่",
-        cls: "bg-orange-100 text-orange-700 border-orange-200",
+        cls: "bg-orange-100 text-orange-700 border-orange-200 animate-pulse",
     },
     confirmed: {
         label: "ยืนยันแล้ว",
@@ -66,6 +84,10 @@ const statusConfig: Record<string, { label: string; cls: string }> = {
         cls: "bg-red-100 text-red-600 border-red-200",
     },
 };
+
+const canAct = (row: BookingRow) =>
+    row.confirm_type === "manual" &&
+    (row.status === "pending" || row.status === "waiting_confirm");
 
 const pageNumbers = computed(() => {
     const pages: (number | "...")[] = [];
@@ -88,14 +110,24 @@ const pageNumbers = computed(() => {
     return pages;
 });
 
+function switchTab(key: TabKey) {
+    if (activeTab.value === key) return;
+    activeTab.value = key;
+    // ทุกแท็บ = ข้อมูลวันปัจจุบัน ยกเว้น "จองล่วงหน้า" = วันนี้ + วันข้างหน้า
+    filterDate.value = key === "upcoming" ? "" : todayStr();
+    search.value = "";
+    fetch(1);
+}
+
 async function fetch(page = 1) {
     loading.value = true;
     try {
         const res = await axios.get("/admin/bookings", {
             params: {
                 page,
-                status: filterStatus.value || undefined,
+                tab: activeTab.value,
                 date: filterDate.value || undefined,
+                search: search.value.trim() || undefined,
             },
         });
         paginated.value = res.data;
@@ -103,6 +135,12 @@ async function fetch(page = 1) {
     } finally {
         loading.value = false;
     }
+}
+
+function resetFilters() {
+    search.value = "";
+    filterDate.value = "";
+    fetch(1);
 }
 
 async function approve(row: BookingRow) {
@@ -158,24 +196,52 @@ onMounted(() => fetch());
 
 <template>
     <div class="space-y-4">
+        <!-- Tabs -->
+        <div
+            class="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit"
+        >
+            <button
+                v-for="tab in tabs"
+                :key="tab.key"
+                @click="switchTab(tab.key as any)"
+                :class="
+                    activeTab === tab.key
+                        ? 'bg-white text-blue-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                "
+                class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5"
+            >
+                <i :class="`fa-solid ${tab.icon}`"></i>
+                {{ tab.label }}
+                <span
+                    v-if="tab.key === 'pending' && paginated.pending_count > 0"
+                    class="ml-0.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
+                >
+                    {{ paginated.pending_count }}
+                </span>
+            </button>
+        </div>
+
         <!-- Filter bar -->
         <div class="flex flex-wrap items-center gap-3">
-            <select
-                v-model="filterStatus"
-                @change="fetch(1)"
-                class="px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
-            >
-                <option value="">ทุกสถานะ</option>
-                <option value="pending">รอยืนยัน</option>
-                <option value="confirmed">ยืนยันแล้ว</option>
-                <option value="cancelled">ยกเลิกแล้ว</option>
-            </select>
+            <div class="relative flex-1 min-w-[200px] max-w-xs">
+                <i
+                    class="absolute text-xs -translate-y-1/2 fa-solid fa-magnifying-glass left-3 top-1/2 text-slate-400"
+                ></i>
+                <input
+                    v-model="search"
+                    @input="onSearchInput"
+                    type="text"
+                    placeholder="ค้นหา ชื่อ / อีเมล / ห้อง"
+                    class="w-full py-2 pl-8 pr-3 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                />
+            </div>
             <div class="relative">
                 <input
-                    :value="fmtDate(filterDate)"
+                    :value="filterDate ? fmtDate(filterDate) : ''"
                     readonly
-                    placeholder="วัน/เดือน/ปี"
-                    class="px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 cursor-pointer w-28 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    placeholder="ทุกวัน"
+                    class="px-3 py-2 text-xs bg-white border cursor-pointer border-slate-200 rounded-xl text-slate-700 w-28 focus:outline-none focus:ring-2 focus:ring-blue-100"
                     @click="($refs.hiddenDate as HTMLInputElement).showPicker()"
                 />
                 <input
@@ -187,16 +253,13 @@ onMounted(() => fetch());
                 />
             </div>
             <button
-                @click="
-                    filterStatus = '';
-                    filterDate = '';
-                    fetch(1);
-                "
+                @click="resetFilters"
                 class="px-3 py-2 text-xs transition-colors bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50"
             >
                 <i class="mr-1 fa-solid fa-rotate-right"></i>รีเซ็ต
             </button>
             <span
+                v-if="paginated.pending_count > 0"
                 class="ml-auto text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-xl font-bold"
             >
                 {{ paginated.pending_count }} รายการรอดำเนินการ
@@ -212,10 +275,26 @@ onMounted(() => fetch());
             >
                 <div>
                     <h3 class="text-sm font-bold text-slate-900">
-                        คำขอจองทั้งหมด
+                        {{ tabs.find((t) => t.key === activeTab)?.label }}
+                        <span class="font-normal text-slate-400"
+                            >({{ paginated.total }})</span
+                        >
                     </h3>
                     <p class="text-xs text-slate-400 mt-0.5">
-                        อนุมัติหรือปฏิเสธรายการที่ confirm_type = manual
+                        <template v-if="activeTab === 'pending'"
+                            >คำขอห้อง manual ที่รออนุมัติ — วันที่
+                            {{
+                                filterDate ? fmtDate(filterDate) : "ทั้งหมด"
+                            }}</template
+                        >
+                        <template v-else-if="activeTab === 'confirmed'"
+                            >รายการที่ยืนยันแล้ว</template
+                        >
+                        <template v-else-if="activeTab === 'upcoming'"
+                            >รายการที่เจ้าหน้าที่จองล่วงหน้าไว้
+                            และยังไม่ถึงวันใช้งาน</template
+                        >
+                        <template v-else>รายการที่ยกเลิก / ถูกปฏิเสธ</template>
                     </p>
                 </div>
             </div>
@@ -298,10 +377,7 @@ onMounted(() => fetch());
                                 </td>
                                 <td class="p-4 text-right">
                                     <div
-                                        v-if="
-                                            row.status === 'pending' &&
-                                            row.confirm_type === 'manual'
-                                        "
+                                        v-if="canAct(row)"
                                         class="flex justify-end gap-1.5"
                                     >
                                         <button

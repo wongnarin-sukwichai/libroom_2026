@@ -7,6 +7,7 @@ use App\Models\BookingGroup;
 use App\Models\Holiday;
 use App\Models\Room;
 use App\Models\Time;
+use App\Support\BookingWindow;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -54,10 +55,11 @@ class BookingController extends Controller
         }
 
         return response()->json([
-            'times'       => $times,
-            'booked_ids'  => $bookedIds,
-            'used_hours'  => $usedHours,
-            'daily_quota' => $zoneQuota,
+            'times'          => $times,
+            'booked_ids'     => $bookedIds,
+            'used_hours'     => $usedHours,
+            'daily_quota'    => $zoneQuota,
+            'booking_window' => BookingWindow::status(),
         ]);
     }
 
@@ -141,6 +143,12 @@ class BookingController extends Controller
         $today   = Carbon::today();
         $date    = $today->format('Y-m-d');
         $timeIds = collect($data['time_ids'])->sort()->values()->all();
+
+        // เช็คหน้าต่างเวลาเปิดให้จอง (global) — staff/admin ใช้ /admin/bookings/staff จึงไม่โดน gate นี้
+        $window = BookingWindow::status();
+        if (! $window['is_open_now']) {
+            return response()->json(['message' => $window['message']], 422);
+        }
 
         if (Holiday::where('d', (string)$today->day)->where('m', (string)$today->month)->exists()) {
             return response()->json(['message' => 'งดให้บริการเนื่องในวันหยุด'], 422);

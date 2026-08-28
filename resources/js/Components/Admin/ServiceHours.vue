@@ -19,6 +19,51 @@ const saving    = ref(false);
 const formError = ref('');
 const form      = ref({ id: 0, title: '', start: '09:00', end: '19:00' });
 
+// ── หน้าต่างเวลาเปิดให้จอง (global) ───────────────────────────────
+interface BookingWindow {
+    enabled: boolean;
+    open: string;
+    close: string;
+    is_open_now: boolean;
+    server_time: string;
+}
+const bw         = ref<BookingWindow>({ enabled: true, open: '06:00', close: '19:00', is_open_now: true, server_time: '' });
+const bwLoading  = ref(false);
+const bwSaving   = ref(false);
+const bwError    = ref('');
+const bwExpanded = ref(false);   // card ยุบไว้เป็นค่าเริ่มต้น (ไม่ได้แก้บ่อย)
+
+async function fetchWindow() {
+    bwLoading.value = true;
+    try {
+        const res = await axios.get('/admin/settings');
+        bw.value = res.data;
+    } finally {
+        bwLoading.value = false;
+    }
+}
+
+async function saveWindow() {
+    bwError.value  = '';
+    bwSaving.value = true;
+    try {
+        const res = await axios.put('/admin/settings', {
+            booking_window_enabled: bw.value.enabled,
+            booking_open_time:      bw.value.open,
+            booking_close_time:     bw.value.close,
+        });
+        bw.value = res.data;
+        Swal.fire({ title: 'บันทึกแล้ว', icon: 'success', timer: 1200, showConfirmButton: false });
+    } catch (err: any) {
+        const errors = err.response?.data?.errors;
+        bwError.value = errors
+            ? Object.values(errors).flat().join(' ')
+            : (err.response?.data?.message ?? 'เกิดข้อผิดพลาด');
+    } finally {
+        bwSaving.value = false;
+    }
+}
+
 async function fetchTimes() {
     loading.value = true;
     try {
@@ -89,11 +134,85 @@ async function confirmDelete(t: TimeRow) {
     }
 }
 
-onMounted(() => fetchTimes());
+onMounted(() => { fetchWindow(); fetchTimes(); });
 </script>
 
 <template>
     <div class="space-y-5">
+        <!-- หน้าต่างเวลาเปิดให้จอง (global) — ยุบ/ขยายได้ -->
+        <div class="overflow-hidden bg-white border shadow-sm rounded-2xl border-slate-200">
+            <button type="button" @click="bwExpanded = !bwExpanded"
+                class="flex items-center w-full gap-3 p-5 text-left transition-colors hover:bg-slate-50">
+                <i class="fa-solid fa-door-open text-blue-500 shrink-0"></i>
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-sm font-bold text-slate-900">ช่วงเวลาเปิดให้จอง (ทั้งระบบ)</h3>
+                    <p class="text-xs text-slate-400 mt-0.5 truncate">
+                        นอกช่วงเวลานี้ ผู้ใช้จะกดจองไม่ได้ (เจ้าหน้าที่จองหลังบ้านได้ตามปกติ)
+                    </p>
+                </div>
+                <span v-if="!bwLoading"
+                    class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                    :class="!bw.enabled
+                        ? 'bg-slate-100 text-slate-500 border-slate-200'
+                        : (bw.is_open_now
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-red-50 text-red-600 border-red-200')">
+                    {{ !bw.enabled ? 'ปิดการจำกัด' : (bw.is_open_now ? `${bw.open}–${bw.close}` : `${bw.open}–${bw.close} · ปิดอยู่`) }}
+                </span>
+                <i class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform shrink-0"
+                    :class="{ 'rotate-180': bwExpanded }"></i>
+            </button>
+
+            <div v-show="bwExpanded" class="border-t border-slate-200">
+            <div v-if="bwLoading" class="py-10 text-center text-xs text-slate-400">
+                <i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังโหลด...
+            </div>
+
+            <form v-else @submit.prevent="saveWindow" class="p-5 space-y-4">
+                <div v-if="bwError"
+                    class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <i class="fa-solid fa-circle-exclamation mr-1"></i>{{ bwError }}
+                </div>
+
+                <label class="flex items-center gap-2.5 cursor-pointer">
+                    <input v-model="bw.enabled" type="checkbox"
+                        class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                    <span class="text-xs font-bold text-slate-700">เปิดใช้งานการจำกัดเวลา</span>
+                </label>
+
+                <div class="grid grid-cols-2 gap-3 max-w-xs">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">เปิดจองเวลา</label>
+                        <input v-model="bw.open" type="time" required :disabled="!bw.enabled"
+                            class="w-full text-xs px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">ปิดจองเวลา</label>
+                        <input v-model="bw.close" type="time" required :disabled="!bw.enabled"
+                            class="w-full text-xs px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400" />
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 text-[11px]">
+                    <span class="text-slate-400">เวลาเซิร์ฟเวอร์ตอนนี้: <b class="text-slate-600">{{ bw.server_time }}</b></span>
+                    <span v-if="!bw.enabled"
+                        class="bg-slate-100 text-slate-500 border border-slate-200 font-bold px-2 py-0.5 rounded-full">ปิดการจำกัด</span>
+                    <span v-else-if="bw.is_open_now"
+                        class="bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2 py-0.5 rounded-full">ขณะนี้เปิดจอง</span>
+                    <span v-else
+                        class="bg-red-50 text-red-600 border border-red-200 font-bold px-2 py-0.5 rounded-full">ขณะนี้ปิดจอง</span>
+                </div>
+
+                <div class="flex justify-end pt-1">
+                    <button type="submit" :disabled="bwSaving"
+                        class="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg transition-colors disabled:opacity-60 flex items-center gap-1.5">
+                        <i v-if="bwSaving" class="fa-solid fa-spinner animate-spin"></i> บันทึก
+                    </button>
+                </div>
+            </form>
+            </div>
+        </div>
+
         <!-- Header -->
         <div class="p-5 text-white bg-gradient-to-r from-blue-900 to-indigo-900 rounded-2xl">
             <h3 class="text-base font-bold">จัดการ Config เวลาให้บริการ</h3>

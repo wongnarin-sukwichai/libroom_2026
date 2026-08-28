@@ -16,7 +16,24 @@ class AdminBookingController extends Controller
 {
     public function index(Request $request)
     {
-        $date = $request->filled('date') ? $request->date : Carbon::today()->format('Y-m-d');
+        // มีวันที่ = กรองวันนั้น, ไม่มี = ทุกวัน (ใช้กับ tab ยืนยันแล้ว/ยกเลิก เพื่อดูย้อนหลัง)
+        $date = $request->filled('date') ? $request->date : null;
+
+        // แยกตาม tab: รอดำเนินการ / จองล่วงหน้า / ยืนยันแล้ว / ยกเลิก
+        $statusMap = [
+            'pending'   => ['pending', 'waiting_confirm'],
+            'upcoming'  => ['confirmed'],
+            'confirmed' => ['confirmed'],
+            'cancelled' => ['cancelled'],
+        ];
+        $tab      = $request->get('tab', 'pending');
+        $statuses = $statusMap[$tab] ?? $statusMap['pending'];
+
+        // จองล่วงหน้า = เจ้าหน้าที่จองไว้ (admin_id != null) และวันที่ยังมาไม่ถึง (date > วันนี้)
+        $isUpcoming    = $tab === 'upcoming';
+        $upcomingAfter = $isUpcoming ? Carbon::now('Asia/Bangkok')->toDateString() : null;
+
+        $search = trim((string) $request->get('search', ''));
 
         $query = BookingGroup::with([
             'room'               => fn($q) => $q->select('id', 'zone_id', 'title', 'confirm_type'),
@@ -25,15 +42,24 @@ class AdminBookingController extends Controller
             'lead'               => fn($q) => $q->select('id', 'name', 'email', 'type'),
             'admin'              => fn($q) => $q->select('id', 'name', 'email'),
         ])
-        ->where('date', $date)
+        ->when($date, fn($q) => $q->where('date', $date))
+        ->when($isUpcoming, fn($q) => $q
+            ->whereNotNull('admin_id')
+            ->where('date', '>', $upcomingAfter))
+        ->whereIn('status', $statuses)
+        ->when($search !== '', function ($q) use ($search) {
+            $q->where(function ($sub) use ($search) {
+                $like = "%{$search}%";
+                $sub->whereHas('lead',  fn($l) => $l->where('name', 'like', $like)->orWhere('email', 'like', $like))
+                    ->orWhereHas('admin', fn($a) => $a->where('name', 'like', $like)->orWhere('email', 'like', $like))
+                    ->orWhereHas('room',  fn($r) => $r->where('title', 'like', $like));
+            });
+        })
         ->orderByRaw("FIELD(status, 'pending', 'waiting_confirm', 'confirmed', 'cancelled')")
+        ->orderBy('date')
         ->orderBy('lead_user_id')
         ->orderBy('room_id')
         ->orderBy('time_id');
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
 
         $all      = $query->get();
         $sessions = $this->groupIntoSessions($all);
@@ -44,7 +70,8 @@ class AdminBookingController extends Controller
         $total    = count($sessions);
         $items    = array_slice($sessions, ($page - 1) * $perPage, $perPage);
 
-        $pendingCount = BookingGroup::where('status', 'pending')
+        // badge คิวงาน = pending + waiting_confirm ของห้อง manual (ทุกวัน)
+        $pendingCount = BookingGroup::whereIn('status', ['pending', 'waiting_confirm'])
             ->whereHas('room', fn($q) => $q->where('confirm_type', 'manual'))
             ->count();
 
@@ -69,6 +96,7 @@ class AdminBookingController extends Controller
                 && $current['lead_user_id'] === $g->lead_user_id
                 && $current['room_id']      === $g->room_id
                 && $current['status']       === $g->status
+                && $current['date']         === $g->date->format('Y-m-d')
                 && $g->time_id === $current['last_time'] + 1;
 
             if ($sameSession) {

@@ -245,6 +245,12 @@ const selectedRoom = ref(null);
 const availableTimes = ref([]);
 const bookedTimeIds = ref([]);
 const isFetchingSlots = ref(false);
+const bookingWindow = ref(null);
+
+// นอกช่วงเวลาที่เปิดให้จอง (global) — ไม่รวมกรณีฟีเจอร์ถูกปิด
+const bookingClosed = computed(
+    () => !!bookingWindow.value?.enabled && !bookingWindow.value?.is_open_now,
+);
 
 const bookingForm = ref({
     date:            "",
@@ -261,6 +267,7 @@ const initiateBooking = (zone) => {
     availableTimes.value = [];
     bookedTimeIds.value  = [];
     usedHoursToday.value = 0;
+    bookingWindow.value  = null;
     openModal("booking");
 };
 
@@ -280,6 +287,7 @@ const fetchSlots = async () => {
         bookedTimeIds.value               = data.booked_ids;
         usedHoursToday.value              = data.used_hours  ?? 0;
         dailyQuota.value                  = data.daily_quota ?? 3;
+        bookingWindow.value               = data.booking_window ?? null;
         bookingForm.value.selectedTimeIds = [];
     } catch (e) {
         console.error('fetchSlots failed:', e);
@@ -365,6 +373,15 @@ const joinCapacity  = ref({ need: 0, current: 1 });
 
 const handleBookingSubmit = async () => {
     if (!bookingSummary.value || isSubmitting.value) return;
+
+    if (bookingClosed.value) {
+        showToast(
+            currentLang.value === 'th' ? 'ไม่สามารถจองได้' : 'Booking Closed',
+            bookingWindow.value?.message ?? 'ขณะนี้อยู่นอกเวลาทำการจอง',
+            true,
+        );
+        return;
+    }
 
     isSubmitting.value = true;
     try {
@@ -565,7 +582,7 @@ const hideToast = () => {
                     </div>
                     <div v-if="!authUser">
                         <a
-                            href="/libroom/auth/google"
+                            :href="`${appBase}/auth/google`"
                             class="bg-white hover:bg-blue-950 text-slate-950 hover:text-white font-semibold px-3 py-1 rounded shadow transition-all flex items-center gap-1 text-[11px] md:text-xs"
                         >
                             <i class="fa-brands fa-google"></i>
@@ -1493,7 +1510,7 @@ const hideToast = () => {
                         <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
                         <div>
                             <span>{{ t("bookingLoginAlert") }}</span>
-                            <a href="/libroom/auth/google" class="text-blue-900 hover:underline font-bold flex items-center gap-1 mt-1.5">
+                            <a :href="`${appBase}/auth/google`" class="text-blue-900 hover:underline font-bold flex items-center gap-1 mt-1.5">
                                 <i class="fa-brands fa-google"></i>
                                 เข้าสู่ระบบด้วย Google
                             </a>
@@ -1598,6 +1615,19 @@ const hideToast = () => {
                             </div>
                         </div>
 
+                        <!-- นอกเวลาทำการจอง -->
+                        <div v-if="bookingClosed"
+                            class="flex items-start gap-2.5 p-3.5 bg-orange-50 border border-orange-200 rounded-xl text-orange-800">
+                            <i class="fa-solid fa-clock mt-0.5 shrink-0"></i>
+                            <div class="text-xs leading-relaxed">
+                                <div class="font-bold">ขณะนี้อยู่นอกเวลาทำการจอง</div>
+                                <div class="mt-0.5">
+                                    ระบบเปิดให้จองเวลา {{ bookingWindow.open }} – {{ bookingWindow.close }} น.
+                                    (เวลาระบบตอนนี้ {{ bookingWindow.server_time }} น.)
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- กริด Time Slot จาก DB -->
                         <div>
                             <div class="flex items-center justify-between mb-2">
@@ -1690,8 +1720,8 @@ const hideToast = () => {
                         <!-- ปุ่มยืนยัน -->
                         <button
                             type="submit"
-                            :disabled="!bookingSummary || props.todayIsHoliday || isSubmitting"
-                            :class="(!bookingSummary || props.todayIsHoliday || isSubmitting) ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'"
+                            :disabled="!bookingSummary || props.todayIsHoliday || bookingClosed || isSubmitting"
+                            :class="(!bookingSummary || props.todayIsHoliday || bookingClosed || isSubmitting) ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'"
                             class="w-full text-white font-bold py-2.5 rounded-lg text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
                         >
                             <i :class="isSubmitting ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-circle-check'"></i>

@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\AdminKioskController;
 use App\Http\Controllers\Admin\AdminMemberController;
 use App\Http\Controllers\Admin\AdminOverviewController;
 use App\Http\Controllers\Admin\AdminRoomController;
+use App\Http\Controllers\Admin\AdminSettingController;
 use App\Http\Controllers\Admin\AdminTimeController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Auth\GoogleController;
@@ -46,6 +47,9 @@ Route::middleware('auth:admin')->group(function () {
     Route::get('/admin/holidays',              [AdminHolidayController::class, 'index']);
     Route::post('/admin/holidays',             [AdminHolidayController::class, 'store']);
     Route::delete('/admin/holidays/{holiday}', [AdminHolidayController::class, 'destroy']);
+
+    Route::get('/admin/settings',  [AdminSettingController::class, 'index']);
+    Route::put('/admin/settings',  [AdminSettingController::class, 'update']);
 
     Route::get('/admin/times',          [AdminTimeController::class, 'index']);
     Route::post('/admin/times',         [AdminTimeController::class, 'store']);

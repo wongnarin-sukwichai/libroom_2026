@@ -540,7 +540,7 @@ const logoutAdmin = async () => {
                                     class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white transition-all bg-indigo-600 shadow hover:bg-indigo-700 rounded-xl"
                                 >
                                     <i class="fa-solid fa-calendar-plus"></i>
-                                    จองห้องสำหรับเจ้าหน้าที่
+                                    จองล่วงหน้า
                                 </button>
                             </div>
                             <Bookings @pending-count="pendingCount = $event" />
@@ -574,7 +574,7 @@ const logoutAdmin = async () => {
                 <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                     <div class="flex items-center gap-2">
                         <i class="text-indigo-500 fa-solid fa-calendar-plus"></i>
-                        <h3 class="text-sm font-bold text-slate-900">จองห้องสำหรับเจ้าหน้าที่</h3>
+                        <h3 class="text-sm font-bold text-slate-900">จองล่วงหน้า (โดยเจ้าหน้าที่)</h3>
                     </div>
                     <button @click="showStaffBooking = false" class="text-slate-400 hover:text-slate-700">
                         <i class="text-base fa-solid fa-xmark"></i>
