@@ -36,11 +36,12 @@ class AdminBookingController extends Controller
         $search = trim((string) $request->get('search', ''));
 
         $query = BookingGroup::with([
-            'room'               => fn($q) => $q->select('id', 'zone_id', 'title', 'confirm_type'),
+            'room'               => fn($q) => $q->select('id', 'zone_id', 'title', 'confirm_type', 'access_control'),
             'room.zone'          => fn($q) => $q->select('id', 'loc_id', 'title'),
             'room.zone.location' => fn($q) => $q->select('id', 'title'),
             'lead'               => fn($q) => $q->select('id', 'name', 'email', 'type'),
             'admin'              => fn($q) => $q->select('id', 'name', 'email'),
+            'bookings'           => fn($q) => $q->select('id', 'group_id', 'status'),
         ])
         ->when($date, fn($q) => $q->where('date', $date))
         ->when($isUpcoming, fn($q) => $q
@@ -104,6 +105,7 @@ class AdminBookingController extends Controller
                 $current['last_time'] = $g->time_id;
                 $current['end_hour']  = $g->time_id + 1;
                 $current['hours']++;
+                $current['bk_statuses'] = array_merge($current['bk_statuses'], $g->bookings->pluck('status')->all());
             } else {
                 if ($current) $sessions[] = $this->formatSession($current);
                 $current = [
@@ -116,7 +118,9 @@ class AdminBookingController extends Controller
                     'start_hour'   => $g->time_id,
                     'end_hour'     => $g->time_id + 1,
                     'hours'        => 1,
-                    'confirm_type' => $g->room?->confirm_type,
+                    'bk_statuses'   => $g->bookings->pluck('status')->all(),
+                    'confirm_type'  => $g->room?->confirm_type,
+                    'access_control' => $g->room?->access_control,
                     'room_title'   => $g->room?->title,
                     'zone_title'   => $g->room?->zone?->title,
                     'loc_title'    => $g->room?->zone?->location?->title,
@@ -133,18 +137,24 @@ class AdminBookingController extends Controller
     private function formatSession(array $s): array
     {
         $pad = fn($h) => sprintf('%02d:00', $h);
+
+        $bk        = collect($s['bk_statuses'] ?? [])->reject(fn($st) => $st === 'cancelled');
+        $checkedIn = $bk->isNotEmpty() && $bk->every(fn($st) => $st === 'checked_in');
+
         return [
-            'ids'          => $s['ids'],
-            'date'         => $s['date'],
-            'time_label'   => $pad($s['start_hour']) . ' – ' . $pad($s['end_hour']) . ' น.',
-            'hours'        => $s['hours'],
-            'status'       => $s['status'],
-            'confirm_type' => $s['confirm_type'],
-            'room_title'   => $s['room_title'],
-            'zone_title'   => $s['zone_title'],
-            'loc_title'    => $s['loc_title'],
-            'member_name'  => $s['member_name'],
-            'member_email' => $s['member_email'],
+            'ids'            => $s['ids'],
+            'date'           => $s['date'],
+            'time_label'     => $pad($s['start_hour']) . ' – ' . $pad($s['end_hour']) . ' น.',
+            'hours'          => $s['hours'],
+            'status'         => $s['status'],
+            'confirm_type'   => $s['confirm_type'],
+            'access_control' => $s['access_control'] ?? '0',
+            'checked_in'     => $checkedIn,
+            'room_title'     => $s['room_title'],
+            'zone_title'     => $s['zone_title'],
+            'loc_title'      => $s['loc_title'],
+            'member_name'    => $s['member_name'],
+            'member_email'   => $s['member_email'],
         ];
     }
 
@@ -226,17 +236,33 @@ class AdminBookingController extends Controller
             ->whereIn('status', ['pending', 'waiting_confirm'])
             ->get();
 
-        $now = Carbon::now('Asia/Bangkok');
-
         foreach ($groups as $g) {
             $g->update(['status' => 'confirmed']);
-            $g->bookings()->whereNotIn('status', ['cancelled'])->update([
+            // อนุมัติเท่านั้น — ไม่เช็คอิน (เช็คอินเกิดที่ kiosk หรือปุ่ม "เช็คอิน" วันใช้งานจริง)
+            $g->bookings()->where('status', 'pending')->update(['status' => 'confirmed']);
+        }
+
+        return response()->json(['message' => 'อนุมัติสำเร็จ', 'count' => $groups->count()]);
+    }
+
+    // เจ้าหน้าที่กดเช็คอินให้ (ห้องที่ไม่ติด access control)
+    public function checkinSession(Request $request)
+    {
+        $ids = $request->validate(['ids' => 'required|array', 'ids.*' => 'integer'])['ids'];
+
+        $groups = BookingGroup::whereIn('id', $ids)->where('status', 'confirmed')->get();
+
+        $now   = Carbon::now('Asia/Bangkok');
+        $count = 0;
+
+        foreach ($groups as $g) {
+            $count += $g->bookings()->where('status', 'confirmed')->update([
                 'status'     => 'checked_in',
                 'checkin_at' => $now,
             ]);
         }
 
-        return response()->json(['message' => 'อนุมัติสำเร็จ', 'count' => $groups->count()]);
+        return response()->json(['message' => 'เช็คอินแล้ว', 'count' => $count]);
     }
 
     public function rejectSession(Request $request)

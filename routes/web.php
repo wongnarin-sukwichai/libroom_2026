@@ -43,6 +43,7 @@ Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/bookings/staff',   [AdminBookingController::class, 'staffStore']);
     Route::post('/admin/bookings/approve', [AdminBookingController::class, 'approveSession']);
     Route::post('/admin/bookings/reject',  [AdminBookingController::class, 'rejectSession']);
+    Route::post('/admin/bookings/checkin', [AdminBookingController::class, 'checkinSession']);
 
     Route::get('/admin/holidays',              [AdminHolidayController::class, 'index']);
     Route::post('/admin/holidays',             [AdminHolidayController::class, 'store']);
@@ -60,6 +61,7 @@ Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/locations/{location}/toggle',       [AdminRoomController::class, 'toggleLocation']);
     Route::post('/admin/zones/{zone}/toggle',               [AdminRoomController::class, 'toggleZone']);
     Route::post('/admin/rooms/{room}/toggle',               [AdminRoomController::class, 'toggleRoom']);
+    Route::post('/admin/rooms/{room}/toggle-access',        [AdminRoomController::class, 'toggleRoomAccessControl']);
     Route::put('/admin/zones/{zone}/settings',              [AdminRoomController::class, 'updateZoneSettings']);
 });
 

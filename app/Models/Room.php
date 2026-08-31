@@ -8,7 +8,7 @@ class Room extends Model
 {
     protected $table = 'rooms';
 
-    protected $fillable = ['pic', 'zone_id', 'title', 'detail', 'confirm_type', 'status'];
+    protected $fillable = ['pic', 'zone_id', 'title', 'detail', 'confirm_type', 'access_control', 'status'];
 
     public function zone()
     {

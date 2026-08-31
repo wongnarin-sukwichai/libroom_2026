@@ -101,13 +101,12 @@ class CancelExpiredBookings extends Command
         $this->info("ยกเลิก {$cancelledCount} กลุ่ม (manual ไม่ได้ยืนยันใน 15 นาที) — แจ้ง {$sessions->count()} leader");
     }
 
-    // --- auto room ที่ slot จบแล้ว bookings ยัง confirmed → no_show ---
+    // --- slot จบแล้ว แต่ bookings ยัง confirmed (ไม่เคยเช็คอิน) → no_show ---
     private function markNoShow(): void
     {
         // slot จบเมื่อ: date + (time_id + 1):00:00 <= NOW()
-        $ended = BookingGroup::with('room')
-            ->where('status', 'confirmed')
-            ->whereHas('room', fn($q) => $q->where('confirm_type', 'auto'))
+        // ครอบทุกห้อง (auto/manual, มี/ไม่มี access control) — เช็คอินไม่ว่าจะผ่าน kiosk หรือปุ่มเจ้าหน้าที่
+        $ended = BookingGroup::where('status', 'confirmed')
             ->whereRaw('TIMESTAMP(date, MAKETIME(time_id + 1, 0, 0)) <= NOW()')
             ->get();
 
@@ -124,7 +123,7 @@ class CancelExpiredBookings extends Command
         }
 
         if ($count > 0) {
-            $this->info("Mark no_show {$count} bookings (auto room slot จบแล้ว)");
+            $this->info("Mark no_show {$count} bookings (slot จบแล้วแต่ไม่เช็คอิน)");
         }
     }
 }

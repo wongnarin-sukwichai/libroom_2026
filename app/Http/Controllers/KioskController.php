@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BookingGroup;
 use App\Models\KioskBypassCode;
 use App\Models\Member;
+use App\Models\Room;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -27,30 +29,67 @@ class KioskController extends Controller
             return response()->json([]);
         }
 
-        // 3. ดึง timestamp server → เช็ค slot ปัจจุบัน (Asia/Bangkok)
+        $room = Room::find($roomId);
+        if (!$room) {
+            return response()->json([]);
+        }
+
+        // 3. เวลา server (Asia/Bangkok)
         $now     = Carbon::now('Asia/Bangkok');
         $today   = $now->toDateString();
         $curHour = $now->hour;
 
-        // 4. เช็ค booking_groups ที่ confirmed + room + วันนี้ + slot ปัจจุบัน + member คนนี้อยู่ใน session
-        $hasAccess = DB::table('booking_groups')
-            ->join('bookings', 'bookings.group_id', '=', 'booking_groups.id')
-            ->where('booking_groups.room_id', $roomId)
-            ->where('booking_groups.date', $today)
-            ->where('booking_groups.time_id', $curHour)
-            ->where('booking_groups.status', 'confirmed')
-            ->where('bookings.user_id', $member->id)
-            ->whereNotIn('bookings.status', ['cancelled'])
-            ->exists();
+        // ห้องที่ติด access control: kiosk อนุมัติ + เช็คอินเองได้ (รับทั้ง waiting_confirm/confirmed)
+        // ห้องปกติ: ต้อง confirmed มาก่อน (เจ้าหน้าที่ approve)
+        $isAC              = $room->access_control === '1';
+        $allowedGroupStati = $isAC ? ['waiting_confirm', 'confirmed'] : ['confirmed'];
 
-        if (!$hasAccess) {
+        // 4. booking_groups ของ member นี้ ในห้องนี้ วันนี้ ที่สถานะเข้าเกณฑ์
+        $groups = BookingGroup::where('room_id', $room->id)
+            ->where('date', $today)
+            ->whereIn('status', $allowedGroupStati)
+            ->whereHas('bookings', fn($q) => $q
+                ->where('user_id', $member->id)
+                ->whereNotIn('status', ['cancelled', 'no_show']))
+            ->get();
+
+        // 5. ต้องมี slot ที่ครอบชั่วโมงปัจจุบัน (time_id = ชั่วโมงนี้)
+        //    ถ้ายังเป็น pending (สมาชิกไม่ครบ min_capacity) จะไม่อยู่ใน $groups → ไม่ผ่าน
+        $hasNow = $groups->firstWhere('time_id', $curHour);
+        if (!$hasNow) {
             return response()->json([]);
         }
 
+        // 6. ห้อง access control → อนุมัติ + เช็คอิน เบ็ดเสร็จตรงนี้ (current slot + slot ที่เหลือใน session)
+        if ($isAC) {
+            DB::transaction(function () use ($room, $today, $curHour, $member) {
+                $targets = BookingGroup::where('room_id', $room->id)
+                    ->where('date', $today)
+                    ->where('time_id', '>=', $curHour)
+                    ->whereIn('status', ['waiting_confirm', 'confirmed'])
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($targets as $g) {
+                    if ($g->status === 'waiting_confirm') {
+                        $g->update(['status' => 'confirmed']);
+                    }
+                    $g->bookings()
+                        ->where('user_id', $member->id)
+                        ->whereIn('status', ['pending', 'confirmed'])
+                        ->update([
+                            'status'     => 'checked_in',
+                            'checkin_at' => Carbon::now('Asia/Bangkok'),
+                        ]);
+                }
+            });
+        }
+
         return response()->json([
-            'room_id' => $roomId,
-            'uid'     => $code,
-            'status'  => 1,
+            'room_id'    => $roomId,
+            'uid'        => $code,
+            'status'     => 1,
+            'checked_in' => $isAC,
         ]);
     }
 }

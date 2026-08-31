@@ -43,7 +43,8 @@ locations
         ├── zone_daily_quota         (ชั่วโมงสูงสุด/วัน/user, ส่วนใหญ่ = 3)
         ├── min_capacity             (จำนวน member ขั้นต่ำสำหรับห้อง manual)
         └── rooms (zone_id → zones.id)
-              └── confirm_type: auto | manual
+              ├── confirm_type: auto | manual
+              └── access_control: '0' = ไม่มี kiosk (เจ้าหน้าที่เช็คอิน), '1' = มี kiosk (สแกนเช็คอิน+อนุมัติเอง)
 
 times
   ├── id=1  จันทร์-ศุกร์ (ปกติ)    hour=9,  total=10  → 09:00–19:00
@@ -89,7 +90,11 @@ settings   (key–value config ทั้งระบบ)
 - **confirm_type = auto**: จอง → confirmed ทันที
 - **confirm_type = manual**: จอง → pending (รอ member ครบ min_capacity) → waiting_confirm (รอ admin approve) → confirmed
 - **Join flow**: leader แชร์ join_token (หมดอายุ 15 นาที) ให้ member อื่นมาเข้าร่วม session
-- **Kiosk**: member แสดง code ที่ kiosk, ตรวจ booking_groups.status = confirmed + slot ปัจจุบัน
+- **Check-in**: `bookings.status confirmed → checked_in` เกิดที่ (1) kiosk สแกน (ห้อง `access_control='1'`) หรือ (2) ปุ่ม "เช็คอิน" ในแท็บ admin (ห้อง `access_control='0'`) — `approveSession` set แค่ `confirmed` ไม่เช็คอินให้
+- **Kiosk** (`KioskController@getAccess`): member แสดง code + slot ปัจจุบันตรง →
+  - ห้อง `access_control='1'`: รับทั้ง `waiting_confirm`/`confirmed` → promote `waiting_confirm→confirmed` + set `checked_in` ทุก slot ที่เหลือใน session (idempotent). `pending` (member ไม่ครบ) = ไม่ผ่าน
+  - ห้อง `access_control='0'`: ต้อง `confirmed` มาก่อน (เจ้าหน้าที่ approve)
+- **no_show**: `markNoShow` mark ทุกห้อง (ไม่จำกัด auto) — `confirmed` ที่ slot จบแล้วยังไม่ `checked_in` → `no_show`
 
 ---
 
@@ -116,9 +121,11 @@ settings   (key–value config ทั้งระบบ)
 | GET | `/dashboard` | Admin dashboard (SPA) |
 | GET | `/admin/overview-stats` | สถิติภาพรวม |
 | GET | `/admin/bookings` | รายการ booking ทั้งหมด |
-| POST | `/admin/bookings/approve` | Approve session |
+| POST | `/admin/bookings/approve` | Approve session (→ confirmed, ไม่เช็คอิน) |
 | POST | `/admin/bookings/reject` | Reject session |
+| POST | `/admin/bookings/checkin` | เจ้าหน้าที่กดเช็คอิน (ห้อง access_control=0) |
 | POST | `/admin/bookings/staff` | Staff สร้าง booking แทน |
+| POST | `/admin/rooms/{room}/toggle-access` | เปิด/ปิด access control ของห้อง |
 | GET/POST/PUT/DELETE | `/admin/rooms` | จัดการ rooms/zones/locations |
 | GET/POST/DELETE | `/admin/holidays` | จัดการวันหยุด |
 | GET/POST/PUT/DELETE | `/admin/times` | จัดการ service hours |
@@ -171,10 +178,12 @@ settings   (key–value config ทั้งระบบ)
 
 ## สิ่งที่ยังไม่ได้ทำ / Known Gaps
 
-- [ ] **Kiosk ไม่ update checked_in**: `KioskController@getAccess` grant access แต่ไม่ update `bookings.status → checked_in` ทำให้ไม่รู้ว่าใครเข้าจริง
-- [ ] **ไม่มี no_show / completed logic**: ไม่มี scheduled job มา mark booking ที่ผ่านไปแล้วเป็น `no_show` (ไม่มาแสกน) หรือ `completed` (ใช้งานจบ)
+- [x] ~~Kiosk ไม่ update checked_in~~ — kiosk (ห้อง access_control=1) สแกน = อนุมัติ+เช็คอินเอง / ห้อง access_control=0 ใช้ปุ่ม "เช็คอิน" ในแท็บ admin
+- [x] ~~no_show logic~~ — `CancelExpiredBookings::markNoShow()` mark ทุกห้อง (ยังต้องตั้ง cron `schedule:run` ตอน deploy)
+- [ ] **ไม่มี completed logic**: ไม่มี job mark booking ที่ใช้งานจบเป็น `completed` (enum ถูกลบจาก booking_groups แล้ว)
 - [ ] **ไม่กรอง past slots**: frontend/backend ไม่ block การจอง slot ที่เวลาผ่านไปแล้วในวันเดียวกัน
 - [ ] **Email / Notification**: ยังไม่มีระบบแจ้งเตือนเมื่อ approved/rejected
+- [ ] **Scheduler ยังไม่รันบน local** — `bookings:cancel-expired` ต้องตั้ง cron ตอน deploy
 
 ---
 

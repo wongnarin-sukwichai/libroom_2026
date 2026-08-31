@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 
-interface RoomRow  { id: number; title: string; confirm_type: string; status: string }
+interface RoomRow  { id: number; title: string; confirm_type: string; access_control: string; status: string }
 interface ZoneRow  { id: number; title: string; status: string; zone_daily_quota: number | null; time_weekday: number; time_weekend: number; min_capacity: number; rooms: RoomRow[] }
 interface LocRow   { id: number; title: string; title_eng: string; status: string; zones: ZoneRow[] }
 interface TimeOpt  { id: number; title: string; start: string; end: string; total: number }
@@ -114,6 +114,16 @@ async function toggleRoom(room: RoomRow) {
     try {
         const res = await axios.post(`/admin/rooms/${room.id}/toggle`);
         room.status = res.data.status;
+    } finally { toggling.value = null; }
+}
+
+async function toggleRoomAccess(room: RoomRow) {
+    const key = `room-ac-${room.id}`;
+    if (toggling.value) return;
+    toggling.value = key;
+    try {
+        const res = await axios.post(`/admin/rooms/${room.id}/toggle-access`);
+        room.access_control = res.data.access_control;
     } finally { toggling.value = null; }
 }
 
@@ -241,19 +251,29 @@ onMounted(() => fetchAll());
                     <div v-if="expandedZones.has(zone.id)" class="divide-y divide-slate-50 px-5">
                         <div v-for="room in zone.rooms" :key="room.id"
                             class="flex items-center justify-between py-2.5">
-                            <div>
+                            <div class="flex items-center gap-2 flex-wrap">
                                 <span class="text-xs text-slate-700 font-medium">{{ room.title }}</span>
                                 <span :class="room.confirm_type === 'auto' ? 'text-sky-600' : 'text-amber-600'"
-                                    class="ml-2 text-[10px]">
+                                    class="text-[10px]">
                                     {{ room.confirm_type === 'auto' ? 'Auto' : 'Manual' }}
                                 </span>
+                                <button @click="toggleRoomAccess(room)"
+                                    :disabled="toggling === `room-ac-${room.id}`"
+                                    :class="room.access_control === '1'
+                                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                        : 'bg-slate-50 text-slate-400 border-slate-200'"
+                                    class="text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors disabled:opacity-50 flex items-center gap-1"
+                                    :title="room.access_control === '1' ? 'ติด kiosk — สแกนเช็คอิน/อนุมัติเอง' : 'ไม่ติด kiosk — เจ้าหน้าที่เช็คอิน'">
+                                    <i :class="toggling === `room-ac-${room.id}` ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-door-closed'"></i>
+                                    {{ room.access_control === '1' ? 'Kiosk' : 'ไม่มี Kiosk' }}
+                                </button>
                             </div>
                             <button @click="toggleRoom(room)"
                                 :disabled="toggling === `room-${room.id}`"
                                 :class="room.status === '0'
                                     ? 'bg-green-600 hover:bg-green-700'
                                     : 'bg-slate-300 hover:bg-slate-400'"
-                                class="text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50 min-w-[60px] text-center">
+                                class="text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50 min-w-[60px] text-center shrink-0">
                                 <i v-if="toggling === `room-${room.id}`" class="fa-solid fa-spinner fa-spin"></i>
                                 <span v-else>{{ room.status === '0' ? 'เปิด' : 'ปิด' }}</span>
                             </button>

@@ -10,6 +10,8 @@ interface BookingRow {
     hours: number;
     status: string;
     confirm_type: "auto" | "manual";
+    access_control: "0" | "1";
+    checked_in: boolean;
     room_title: string;
     zone_title: string;
     loc_title: string;
@@ -89,6 +91,13 @@ const canAct = (row: BookingRow) =>
     row.confirm_type === "manual" &&
     (row.status === "pending" || row.status === "waiting_confirm");
 
+// เช็คอินโดยเจ้าหน้าที่ — เฉพาะห้องที่ไม่ติด kiosk, ยืนยันแล้ว, ยังไม่เช็คอิน, วันนี้
+const canCheckin = (row: BookingRow) =>
+    row.status === "confirmed" &&
+    row.access_control === "0" &&
+    !row.checked_in &&
+    row.date === todayStr();
+
 const pageNumbers = computed(() => {
     const pages: (number | "...")[] = [];
     const last = paginated.value.last_page;
@@ -160,6 +169,29 @@ async function approve(row: BookingRow) {
     await axios.post("/admin/bookings/approve", { ids: row.ids });
     Swal.fire({
         title: "อนุมัติสำเร็จ",
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+    });
+    fetch(paginated.value.current_page);
+}
+
+async function checkin(row: BookingRow) {
+    const result = await Swal.fire({
+        title: "เช็คอินการจองนี้?",
+        html: `<div class="text-sm"><b>${row.room_title}</b><br>${fmtDate(row.date)} • ${row.time_label}<br><span class="text-slate-400">${row.member_name}</span></div>`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#2563eb",
+        cancelButtonColor: "#94a3b8",
+        confirmButtonText: "เช็คอิน",
+        cancelButtonText: "ยกเลิก",
+        reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
+    await axios.post("/admin/bookings/checkin", { ids: row.ids });
+    Swal.fire({
+        title: "เช็คอินแล้ว",
         icon: "success",
         timer: 1200,
         showConfirmButton: false,
@@ -394,6 +426,21 @@ onMounted(() => fetch());
                                             ปฏิเสธ
                                         </button>
                                     </div>
+                                    <button
+                                        v-else-if="canCheckin(row)"
+                                        @click="checkin(row)"
+                                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] transition-all inline-flex items-center gap-1"
+                                    >
+                                        <i class="fa-solid fa-door-open"></i>
+                                        เช็คอิน
+                                    </button>
+                                    <span
+                                        v-else-if="row.status === 'confirmed' && row.checked_in"
+                                        class="text-[10px] font-bold text-emerald-600 inline-flex items-center gap-1"
+                                    >
+                                        <i class="fa-solid fa-circle-check"></i>
+                                        เช็คอินแล้ว
+                                    </span>
                                     <span
                                         v-else
                                         class="text-[10px] text-slate-400"

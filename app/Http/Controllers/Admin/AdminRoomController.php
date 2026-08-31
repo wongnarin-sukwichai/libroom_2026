@@ -17,7 +17,7 @@ class AdminRoomController extends Controller
             ->with(['zones' => fn($q) => $q
                 ->select('id', 'loc_id', 'title', 'status', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'min_capacity')
                 ->with(['rooms' => fn($r) => $r
-                    ->select('id', 'zone_id', 'title', 'confirm_type', 'status')
+                    ->select('id', 'zone_id', 'title', 'confirm_type', 'access_control', 'status')
                 ])
             ])
             ->get();
@@ -52,6 +52,13 @@ class AdminRoomController extends Controller
         $room->status = $room->status === '0' ? '1' : '0';
         $room->save();
         return response()->json(['status' => $room->status]);
+    }
+
+    public function toggleRoomAccessControl(Room $room)
+    {
+        $room->access_control = $room->access_control === '1' ? '0' : '1';
+        $room->save();
+        return response()->json(['access_control' => $room->access_control]);
     }
 
     public function updateZoneSettings(Request $request, Zone $zone)
