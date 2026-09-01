@@ -1,0 +1,14 @@
+# LibRoom V2 — Laravel scheduler heartbeat
+#
+# ติดตั้งแบบ system cron file:
+#   sudo cp deploy/libroom-cron /etc/cron.d/libroom
+#   sudo chmod 644 /etc/cron.d/libroom
+#   (cron จะโหลดเองอัตโนมัติ ไม่ต้อง restart)
+#
+# หมายเหตุ:
+# - ไฟล์ใน /etc/cron.d/ ต้องมีฟิลด์ "user" (ตัวที่ 6) ต่างจาก crontab -e
+# - แก้ path /var/www/libroom และ /usr/bin/php ให้ตรงกับ server จริง (which php)
+# - ใช้ user เดียวกับที่รัน php-fpm / เป็นเจ้าของไฟล์ (มัก www-data) เลี่ยงรันเป็น root
+# - อยู่รอด reboot/crash เอง เพราะ service cron ถูก enable โดย default
+
+* * * * * www-data cd /var/www/libroom && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
