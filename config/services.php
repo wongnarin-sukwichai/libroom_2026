@@ -46,4 +46,10 @@ return [
         'v2_api_token' => env('LIBROOM_V2_API_TOKEN'),  // token สำหรับ API ของระบบใหม่นี้
     ],
 
+    // ดึง faculty/branch จากระบบ patron ของสำนักวิทยบริการ (เทียบด้วยรหัสนิสิต)
+    'patron' => [
+        'url'   => env('PATRON_API_URL', 'https://libapp.msu.ac.th/v1/api/GetPatronDetail'),
+        'token' => env('PATRON_API_TOKEN'),  // ส่งเป็น query param ?token=...
+    ],
+
 ];

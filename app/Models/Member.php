@@ -20,5 +20,10 @@ class Member extends Authenticatable
         'type',
         'faculty',
         'branch',
+        'patron_synced_at',
+    ];
+
+    protected $casts = [
+        'patron_synced_at' => 'datetime',
     ];
 }

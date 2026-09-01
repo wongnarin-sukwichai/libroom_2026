@@ -68,6 +68,8 @@ bookings
   └── status: pending | confirmed | checked_in | no_show | cancelled
 
 members    (login ด้วย Google OAuth, มี code สำหรับ kiosk)
+  ├── faculty, branch, type   ← ดึงจากระบบ patron ด้วยรหัสนิสิต (best-effort, ไม่มีก็จองได้)
+  └── patron_synced_at        ครั้งล่าสุดที่ลองดึง (set แม้ไม่พบ กันยิงซ้ำ)
 holidays   (วันหยุดนักขัตฤกษ์)
 kiosk_bypass_codes  (รหัสพิเศษสำหรับเจ้าหน้าที่ ผ่านได้ตลอด)
 settings   (key–value config ทั้งระบบ)
@@ -75,6 +77,8 @@ settings   (key–value config ทั้งระบบ)
   ├── booking_open_time       เวลาเปิดให้กดจอง เช่น "06:00"
   └── booking_close_time      เวลาปิดรับจอง เช่น "19:00"
 ```
+
+**ENV เพิ่ม (patron):** `PATRON_API_URL`, `PATRON_API_TOKEN` (ส่งเป็น query param `?token=`)
 
 ---
 
@@ -199,7 +203,9 @@ settings   (key–value config ทั้งระบบ)
 | `app/Support/BookingWindow.php` | Logic ช่วงเวลาเปิด-ปิดระบบจอง (อ่านจาก `settings`) |
 | `app/Http/Controllers/Admin/AdminSettingController.php` | GET/PUT `/admin/settings` |
 | `app/Http/Controllers/Admin/` | Admin controllers ทั้งหมด |
-| `app/Http/Controllers/Auth/GoogleController.php` | Google OAuth |
+| `app/Http/Controllers/Auth/GoogleController.php` | Google OAuth (+ `defer()` เรียก PatronService หลัง login) |
+| `app/Support/PatronService.php` | ดึง faculty/branch/type จาก `libapp.msu.ac.th` (config: `services.patron`) |
+| `app/Console/Commands/SyncPatronDetails.php` | `members:sync-patron` — backfill/refresh (schedule รายเดือน) |
 | `resources/js/Pages/Welcome.vue` | หน้าหลัก (booking modal) |
 | `resources/js/Pages/MyBookings.vue` | ประวัติการจอง |
 | `resources/js/Pages/Join.vue` | Join session page |

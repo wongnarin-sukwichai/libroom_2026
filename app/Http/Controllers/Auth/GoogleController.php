@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\Member;
 use App\Models\User;
+use App\Support\PatronService;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
+
+use function Illuminate\Support\defer;
 
 class GoogleController extends Controller
 {
@@ -46,6 +49,10 @@ class GoogleController extends Controller
             'avatar'    => $googleUser->getAvatar(),
         ]);
         Auth::login($member);
+
+        // ดึง faculty/branch จากระบบ patron หลังส่ง response แล้ว (ไม่บล็อก login)
+        // ไม่พบ/error → ผู้ใช้จองได้ปกติ เพราะผ่าน OAuth มาแล้ว
+        defer(fn() => app(PatronService::class)->syncMember($member->fresh()));
 
         return redirect()->intended(route('welcome'));
     }
