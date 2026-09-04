@@ -17,6 +17,9 @@ use Inertia\Inertia;
 
 Route::get('/', [LocationController::class, 'index'])->name('welcome');
 
+// TEMP: หน้าเทียบ badge A vs B — ลบทั้งบรรทัดนี้ + resources/js/Pages/Test.vue เมื่อเลือกเสร็จ
+//Route::get('/badge-preview', fn() => Inertia::render('Test'))->name('badge.preview');
+
 Route::get('/dashboard', fn() => Inertia::render('Dashboard'))
     ->middleware('auth:admin')
     ->name('admin.dashboard');

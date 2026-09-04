@@ -24,7 +24,7 @@ class LocationController extends Controller
             ->with(['zones' => fn($q) => $q
                 ->select('id', 'loc_id', 'pic', 'title', 'title_eng', 'detail', 'capacity', 'tool', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'status')
                 ->with(['rooms' => fn($r) => $r
-                    ->select('id', 'zone_id', 'title', 'detail', 'pic', 'confirm_type', 'status')
+                    ->select('id', 'zone_id', 'title', 'detail', 'pic', 'confirm_type', 'access_control', 'status')
                     ->with(['tools' => fn($t) => $t
                         ->select('id', 'room_id', 'tool_id', 'quantity')
                         ->with(['tool' => fn($tt) => $tt->select('id', 'name', 'icon')])

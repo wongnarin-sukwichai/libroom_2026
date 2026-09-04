@@ -542,15 +542,6 @@ const hideToast = () => {
                     <span class="flex items-center gap-1">
                         <i class="fa-solid fa-envelope"></i> library@msu.ac.th
                     </span>
-                    <span class="items-center hidden gap-1 md:inline-flex"
-                        >|</span
-                    >
-                    <span
-                        class="flex items-center gap-1 font-semibold text-amber-400"
-                    >
-                        <i class="fa-solid fa-clock"></i> เปิดบริการ 24 ชั่วโมง
-                        (24 Hours)
-                    </span>
                 </div>
                 <!-- สลับภาษา & ล็อกอิน -->
                 <div class="flex items-center gap-4">
@@ -762,8 +753,13 @@ const hideToast = () => {
                             ? 'bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500 text-white shadow'
                             : 'text-slate-600 hover:bg-slate-100'
                     "
-                    class="flex items-center justify-center flex-1 gap-2 px-4 py-3 text-sm font-bold transition-all rounded-lg"
+                    class="relative flex items-center justify-center flex-1 gap-2 px-4 py-3 text-sm font-bold transition-all rounded-lg"
                 >
+                    <i
+                        v-if="activeArea !== i + 1"
+                        class="absolute hidden text-2xl -translate-x-1/2 tab-hint fa-solid fa-circle-down sm:block left-1/2 -top-6"
+                        aria-hidden="true"
+                    ></i>
                     <i class="fa-solid" :class="locationIcons[i]"></i>
                     <span>{{ locTitle(loc) }}</span>
                 </button>
@@ -1533,30 +1529,37 @@ const hideToast = () => {
                                 : 'hover:border-blue-400 hover:bg-blue-50 cursor-pointer'"
                             class="w-full text-left p-3.5 border border-slate-200 rounded-xl transition-all"
                         >
-                            <!-- แถวหัว: ชื่อห้อง + badge สถานะ -->
-                            <div class="flex items-center justify-between gap-2">
-                                <div class="text-sm font-bold text-slate-900">{{ room.title }}</div>
-                                <span
-                                    :class="{
-                                        'bg-red-100 text-red-700 border-red-200':      room.status === '1',
-                                        'bg-amber-100 text-amber-700 border-amber-200': room.status !== '1' && room.confirm_type === 'manual',
-                                        'bg-sky-100 text-sky-700 border-sky-200':       room.status !== '1' && room.confirm_type === 'auto',
-                                    }"
-                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0"
-                                >
-                                    <template v-if="room.status === '1'">
+                            <!-- แถวหัว: ชื่อห้อง + รายละเอียด (ซ้าย) / badge (มุมบนขวา) -->
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <div class="text-sm font-bold text-slate-900">{{ room.title }}</div>
+                                    <div v-if="room.detail" class="text-xs text-slate-500 mt-0.5">{{ room.detail }}</div>
+                                </div>
+                                <div class="flex flex-wrap justify-end gap-1 shrink-0 max-w-[55%]">
+                                    <span v-if="room.status === '1'"
+                                        class="text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap bg-red-100 text-red-700 border-red-200">
                                         <i class="fa-solid fa-circle-xmark mr-0.5"></i>ไม่ว่าง
-                                    </template>
-                                    <template v-else-if="room.confirm_type === 'manual'">
-                                        <i class="fa-solid fa-user-check mr-0.5"></i>ติดต่อเจ้าหน้าที่เพื่อยืนยัน
-                                    </template>
+                                    </span>
                                     <template v-else>
-                                        <i class="fa-solid fa-circle-check mr-0.5"></i>จองแล้วใช้บริการได้เลย
+                                        <span v-if="room.confirm_type === 'auto'"
+                                            class="text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap bg-emerald-100 text-emerald-700 border-emerald-200">
+                                            <i class="fa-solid fa-circle-check mr-0.5"></i>ยืนยันทันที
+                                        </span>
+                                        <span v-else
+                                            class="text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap bg-amber-100 text-amber-700 border-amber-200">
+                                            <i class="fa-solid fa-users mr-0.5"></i>ต้องครบกลุ่ม
+                                        </span>
+                                        <span v-if="room.access_control === '1'"
+                                            class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-blue-100 text-blue-700 border-blue-200">
+                                            <i class="fa-solid fa-qrcode mr-0.5"></i>แสกน QR Code เพื่อเข้าใช้บริการ
+                                        </span>
+                                        <span v-else
+                                            class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-200">
+                                            <i class="fa-solid fa-bell-concierge mr-0.5"></i>ติดต่อเจ้าหน้าที่ก่อนเข้าใช้บริการ
+                                        </span>
                                     </template>
-                                </span>
+                                </div>
                             </div>
-                            <!-- รายละเอียดห้อง -->
-                            <div v-if="room.detail" class="text-xs text-slate-500 mt-0.5">{{ room.detail }}</div>
                             <!-- roomtools badges -->
                             <div v-if="room.tools?.length" class="mt-1.5 flex flex-wrap gap-1">
                                 <span
@@ -1834,5 +1837,23 @@ const hideToast = () => {
 /* คุณสามารถเพิ่ม CSS Scoped เพิ่มเติมได้ที่นี่หากต้องการ */
 .font-prompt {
     font-family: "Anuphan", sans-serif;
+}
+
+/* ลูกศรคู่กระพริบชี้ลง ลอยเหนือแท็บ — สื่อว่าแท็บพื้นที่กดเลือกได้ */
+@keyframes tabHint {
+    0%, 100% { transform: translate(-50%, 0);   opacity: 0.4; }
+    50%      { transform: translate(-50%, 5px); opacity: 1;   }
+}
+.tab-hint {
+    animation: tabHint 1.4s ease-in-out infinite;
+    /* สีเดียวกับ gradient พื้นหลังตอนเลือกแท็บ (rose-400 → fuchsia-500 → indigo-500) */
+    color: #d946ef;
+    background: linear-gradient(90deg, #fb7185, #d946ef, #6366f1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+    .tab-hint { animation: none; opacity: 0.6; transform: translate(-50%, 0); }
 }
 </style>
