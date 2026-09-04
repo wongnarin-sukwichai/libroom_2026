@@ -661,7 +661,7 @@ const hideToast = () => {
                         <span>{{ t("navRules") }}</span>
                     </button>
                     <a
-                        href="/pdf/tools.pdf"
+                        :href="`${appBase}/pdf/tools.pdf`"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-all font-medium"
@@ -993,7 +993,7 @@ const hideToast = () => {
                             </li>
                             <li>
                                 <a
-                                    href="/pdf/tools.pdf"
+                                    :href="`${appBase}/pdf/tools.pdf`"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     class="text-left transition-colors hover:text-amber-400"

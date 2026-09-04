@@ -9,6 +9,7 @@ const props = defineProps({
     already_joined: { type: Boolean, default: false },
 });
 
+const appBase   = window.APP_BASE ?? '';
 const page      = usePage();
 const authUser  = computed(() => page.props.auth?.user ?? null);
 const joining   = ref(false);
@@ -94,7 +95,7 @@ const handleJoin = async () => {
                     </div>
                     <h2 class="text-base font-bold text-slate-900">ไม่สามารถเข้าร่วมได้</h2>
                     <p class="text-sm text-slate-500">{{ error }}</p>
-                    <a href="/" class="inline-block mt-2 text-xs text-blue-700 hover:underline">
+                    <a :href="`${appBase}/`" class="inline-block mt-2 text-xs text-blue-700 hover:underline">
                         <i class="fa-solid fa-house mr-1"></i>กลับหน้าหลัก
                     </a>
                 </div>
@@ -106,7 +107,7 @@ const handleJoin = async () => {
                     </div>
                     <h2 class="text-base font-bold text-slate-900">คุณอยู่ในกลุ่มนี้แล้ว</h2>
                     <p class="text-sm text-slate-500">{{ group.room_title }} • {{ formatDate(group.date) }}</p>
-                    <a href="/my-bookings" class="inline-block mt-2 text-xs text-blue-700 hover:underline">
+                    <a :href="`${appBase}/my-bookings`" class="inline-block mt-2 text-xs text-blue-700 hover:underline">
                         <i class="fa-solid fa-calendar-check mr-1"></i>ดูประวัติการจอง
                     </a>
                 </div>

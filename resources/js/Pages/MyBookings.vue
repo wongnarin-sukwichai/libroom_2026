@@ -5,6 +5,7 @@ import Swal from 'sweetalert2';
 
 const props = defineProps({ bookings: Array });
 
+const appBase  = window.APP_BASE ?? '';
 const page     = usePage();
 const authUser = computed(() => page.props.auth?.user ?? null);
 
@@ -86,7 +87,7 @@ const copyLink = (url) => {
         <!-- Header -->
         <header class="bg-white border-b border-slate-200 shadow-sm">
             <div class="flex items-center gap-3 px-4 py-3 mx-auto max-w-4xl">
-                <a href="/" class="text-slate-400 hover:text-slate-700 transition-colors">
+                <a :href="`${appBase}/`" class="text-slate-400 hover:text-slate-700 transition-colors">
                     <i class="fa-solid fa-chevron-left text-sm"></i>
                 </a>
                 <div>
@@ -120,11 +121,18 @@ const copyLink = (url) => {
                                     class="text-[10px] font-semibold px-2 py-0.5 rounded-full border">
                                     {{ statusConfig[b.status]?.label }}
                                 </span>
+                                <span v-if="!b.is_leader"
+                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-indigo-100 text-indigo-700 border-indigo-200">
+                                    <i class="fa-solid fa-user-group mr-0.5"></i>เข้าร่วม
+                                </span>
                             </div>
                             <div class="text-xs text-slate-500 mt-1 space-y-0.5">
                                 <div><i class="fa-solid fa-location-dot mr-1.5 text-slate-300"></i>{{ b.loc_title }} › {{ b.zone_title }}</div>
                                 <div><i class="fa-solid fa-calendar mr-1.5 text-slate-300"></i>{{ formatDate(b.date) }}</div>
                                 <div><i class="fa-solid fa-clock mr-1.5 text-slate-300"></i>{{ b.time_label }}</div>
+                                <div v-if="!b.is_leader">
+                                    <i class="fa-solid fa-user-tie mr-1.5 text-slate-300"></i>หัวหน้ากลุ่ม: {{ b.lead_name ?? '—' }}
+                                </div>
                                 <div v-if="b.status === 'pending' && b.member_count < b.min_capacity">
                                     <i class="fa-solid fa-users mr-1.5 text-slate-300"></i>
                                     <span class="text-amber-600 font-semibold">สมาชิก {{ b.member_count }}/{{ b.min_capacity }} คน</span>
@@ -173,11 +181,18 @@ const copyLink = (url) => {
                                     class="text-[10px] font-semibold px-2 py-0.5 rounded-full border">
                                     {{ statusConfig[b.status]?.label }}
                                 </span>
+                                <span v-if="!b.is_leader"
+                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-indigo-100 text-indigo-700 border-indigo-200">
+                                    <i class="fa-solid fa-user-group mr-0.5"></i>เข้าร่วม
+                                </span>
                             </div>
                             <div class="text-xs text-slate-400 mt-1 space-y-0.5">
                                 <div><i class="fa-solid fa-location-dot mr-1.5 text-slate-300"></i>{{ b.loc_title }} › {{ b.zone_title }}</div>
                                 <div><i class="fa-solid fa-calendar mr-1.5 text-slate-300"></i>{{ formatDate(b.date) }}</div>
                                 <div><i class="fa-solid fa-clock mr-1.5 text-slate-300"></i>{{ b.time_label }}</div>
+                                <div v-if="!b.is_leader">
+                                    <i class="fa-solid fa-user-tie mr-1.5 text-slate-300"></i>หัวหน้ากลุ่ม: {{ b.lead_name ?? '—' }}
+                                </div>
                             </div>
                         </div>
                     </div>

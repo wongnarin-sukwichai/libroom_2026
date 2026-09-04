@@ -12,6 +12,8 @@ import ServiceHours from "../Components/Admin/ServiceHours.vue";
 import AdminUsers from "../Components/Admin/AdminUsers.vue";
 import KioskAccess from "../Components/Admin/KioskAccess.vue";
 
+const appBase = (window as any).APP_BASE ?? "";
+
 interface ToastState {
     show: boolean;
     title: string;
@@ -430,7 +432,7 @@ const logoutAdmin = async () => {
                         <span v-show="!isSidebarCollapsed">ผลประเมิน & รายงาน</span>
                     </a>
                     <a
-                        href="/pdf/tools.pdf"
+                        :href="`${appBase}/pdf/tools.pdf`"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl hover:bg-slate-800 hover:text-white"

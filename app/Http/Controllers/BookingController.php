@@ -67,33 +67,43 @@ class BookingController extends Controller
     {
         $member = Auth::user();
 
-        $groups = BookingGroup::where('lead_user_id', $member->id)
+        $groups = BookingGroup::where(function ($q) use ($member) {
+                $q->where('lead_user_id', $member->id)
+                  ->orWhereHas('bookings', fn($b) => $b->where('user_id', $member->id));
+            })
             ->with([
                 'room'               => fn($q) => $q->select('id', 'zone_id', 'title', 'confirm_type'),
                 'room.zone'          => fn($q) => $q->select('id', 'loc_id', 'title'),
                 'room.zone.location' => fn($q) => $q->select('id', 'title'),
+                'lead'               => fn($q) => $q->select('id', 'name'),
             ])
             ->orderByDesc('date')
             ->orderByDesc('time_id')
             ->get()
-            ->map(fn($g) => [
-                'id'           => $g->id,
-                'date'         => $g->date->format('Y-m-d'),
-                'time_id'      => $g->time_id,
-                'time_label'   => sprintf('%02d:00 – %02d:00 น.', $g->time_id, $g->time_id + 1),
-                'status'       => $g->status,
-                'confirm_type' => $g->room?->confirm_type,
-                'room_title'   => $g->room?->title,
-                'zone_title'   => $g->room?->zone?->title,
-                'loc_title'    => $g->room?->zone?->location?->title,
-                'member_count' => $g->bookings()->count(),
-                'min_capacity' => $g->room?->zone?->min_capacity ?? 1,
-                'join_url'     => $g->status === 'pending' && $g->room?->confirm_type === 'manual'
-                                  ? route('booking.join', $g->join_token)
-                                  : null,
-                'can_cancel'   => in_array($g->status, ['pending', 'waiting_confirm'])
-                                  && $g->date->gte(Carbon::today()),
-            ]);
+            ->map(function ($g) use ($member) {
+                $isLeader = $g->lead_user_id === $member->id;
+                return [
+                    'id'           => $g->id,
+                    'date'         => $g->date->format('Y-m-d'),
+                    'time_id'      => $g->time_id,
+                    'time_label'   => sprintf('%02d:00 – %02d:00 น.', $g->time_id, $g->time_id + 1),
+                    'status'       => $g->status,
+                    'confirm_type' => $g->room?->confirm_type,
+                    'room_title'   => $g->room?->title,
+                    'zone_title'   => $g->room?->zone?->title,
+                    'loc_title'    => $g->room?->zone?->location?->title,
+                    'member_count' => $g->bookings()->count(),
+                    'min_capacity' => $g->room?->zone?->min_capacity ?? 1,
+                    'is_leader'    => $isLeader,
+                    'lead_name'    => $g->lead?->name,
+                    'join_url'     => $isLeader && $g->status === 'pending' && $g->room?->confirm_type === 'manual'
+                                      ? route('booking.join', $g->join_token)
+                                      : null,
+                    'can_cancel'   => $isLeader
+                                      && in_array($g->status, ['pending', 'waiting_confirm'])
+                                      && $g->date->gte(Carbon::today()),
+                ];
+            });
 
         return inertia('MyBookings', ['bookings' => $groups]);
     }
