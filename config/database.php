@@ -55,6 +55,9 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            // บังคับ time zone ต่อ connection (SET time_zone) — ให้ NOW()/CURDATE() เป็นเวลาไทย
+            // กระทบเฉพาะ connection ของ LibRoom ไม่ยุ่งกับแอปอื่นที่แชร์ MariaDB
+            'timezone' => env('DB_TIMEZONE', '+07:00'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
@@ -75,6 +78,9 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            // บังคับ time zone ต่อ connection (SET time_zone) — ให้ NOW()/CURDATE() เป็นเวลาไทย
+            // กระทบเฉพาะ connection ของ LibRoom ไม่ยุ่งกับแอปอื่นที่แชร์ MariaDB
+            'timezone' => env('DB_TIMEZONE', '+07:00'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
