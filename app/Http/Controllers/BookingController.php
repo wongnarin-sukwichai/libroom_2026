@@ -227,6 +227,7 @@ class BookingController extends Controller
                         'time_id'          => $timeId,
                         'lead_user_id'     => $member->id,
                         'status'           => $groupStatus,
+                        'source'           => 'web',
                         'join_token'       => $timeId === $timeIds[0]
                                              ? $shareToken
                                              : Str::random(32),

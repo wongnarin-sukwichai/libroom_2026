@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BookingGroup;
 use App\Models\Holiday;
 use App\Models\Room;
+use App\Models\Time;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -158,6 +159,160 @@ class AdminBookingController extends Controller
         ];
     }
 
+    // ─── ผังห้อง (board view) ─────────────────────────────────────────────
+    /** ตารางเวลาของห้องเดียว + รายชื่อผู้จองในแต่ละช่อง */
+    public function roomDay(Request $request)
+    {
+        $data = $request->validate([
+            'room_id' => 'required|integer|exists:rooms,id',
+            'date'    => 'required|date',
+        ]);
+
+        $room = Room::with([
+            'zone'          => fn($q) => $q->select('id', 'loc_id', 'title', 'time_weekday', 'time_weekend'),
+            'zone.location' => fn($q) => $q->select('id', 'title'),
+        ])->findOrFail($data['room_id']);
+
+        $isWeekend = Carbon::parse($data['date'])->isWeekend();
+        $config    = Time::findOrFail($isWeekend ? $room->zone->time_weekend : $room->zone->time_weekday);
+
+        // โครงช่องเวลา
+        $slots = [];
+        for ($h = $config->start_hour; $h < $config->end_hour; $h++) {
+            $slots[$h] = [
+                'hour'   => $h,
+                'label'  => sprintf('%02d:00 – %02d:00 น.', $h, $h + 1),
+                'groups' => [],
+            ];
+        }
+
+        $groups = BookingGroup::with([
+                'lead'            => fn($q) => $q->select('id', 'name', 'email'),
+                'admin'           => fn($q) => $q->select('id', 'name'),
+                'bookings'        => fn($q) => $q->select('id', 'group_id', 'user_id', 'status'),
+                'bookings.member' => fn($q) => $q->select('id', 'name'),
+            ])
+            ->where('room_id', $room->id)
+            ->where('date', $data['date'])
+            ->whereIn('status', ['pending', 'waiting_confirm', 'confirmed'])
+            ->orderBy('lead_user_id')
+            ->orderBy('admin_id')
+            ->orderBy('status')
+            ->orderBy('time_id')
+            ->get();
+
+        // จับ session: lead/admin + status เดียวกัน + time_id ต่อเนื่อง
+        $sessions = [];
+        $cur      = null;
+        $keyOf    = fn($g) => ($g->lead_user_id ?? 'a' . $g->admin_id) . '|' . $g->status;
+
+        foreach ($groups as $g) {
+            if ($cur && $cur['key'] === $keyOf($g) && $g->time_id === $cur['last'] + 1) {
+                $cur['ids'][]  = $g->id;
+                $cur['last']   = $g->time_id;
+                $cur['end']    = $g->time_id + 1;
+                $cur['hours']++;
+            } else {
+                if ($cur) $sessions[] = $cur;
+                $occ = $g->bookings->reject(fn($b) => $b->status === 'cancelled')->map(fn($b) => [
+                    'name'   => $b->member?->name ?? '—',
+                    'status' => $b->status,
+                ])->values()->all();
+
+                $cur = [
+                    'key'        => $keyOf($g),
+                    'ids'        => [$g->id],
+                    'last'       => $g->time_id,
+                    'start'      => $g->time_id,
+                    'end'        => $g->time_id + 1,
+                    'hours'      => 1,
+                    'status'     => $g->status,
+                    'source'     => $g->source,
+                    'lead_name'  => $g->lead?->name ?? ($g->admin ? $g->admin->name . ' (เจ้าหน้าที่)' : '—'),
+                    'lead_email' => $g->lead?->email,
+                    'by_staff'   => $g->lead_user_id === null,
+                    'occupants'  => $occ,
+                ];
+            }
+        }
+        if ($cur) $sessions[] = $cur;
+
+        foreach ($sessions as $s) {
+            $bk         = collect($s['occupants']);
+            $checkedIn  = $bk->isNotEmpty() && $bk->every(fn($o) => $o['status'] === 'checked_in');
+            $payload    = [
+                'ids'        => $s['ids'],
+                'status'     => $s['status'],
+                'source'     => $s['source'] ?? 'web',
+                'start_hour' => $s['start'],
+                'end_hour'   => $s['end'],
+                'hours'      => $s['hours'],
+                'time_label' => sprintf('%02d:00 – %02d:00 น.', $s['start'], $s['end']),
+                'lead_name'  => $s['lead_name'],
+                'lead_email' => $s['lead_email'],
+                'by_staff'   => $s['by_staff'],
+                'occupants'  => $s['occupants'],
+                'checked_in' => $checkedIn,
+            ];
+            for ($h = $s['start']; $h < $s['end']; $h++) {
+                if (!isset($slots[$h])) continue;
+                $slots[$h]['groups'][] = $payload + ['is_continuation' => $h !== $s['start']];
+            }
+        }
+
+        return response()->json([
+            'room' => [
+                'id'             => $room->id,
+                'title'          => $room->title,
+                'zone_title'     => $room->zone?->title,
+                'loc_title'      => $room->zone?->location?->title,
+                'confirm_type'   => $room->confirm_type,
+                'access_control' => $room->access_control,
+            ],
+            'date'       => $data['date'],
+            'is_weekend' => $isWeekend,
+            'slots'      => array_values($slots),
+        ]);
+    }
+
+    /** จำนวนคำขอรอ / จองแล้ว ต่อห้อง สำหรับวันหนึ่ง (จุดสีบนปุ่มห้อง) */
+    public function boardSummary(Request $request)
+    {
+        $date = $request->validate(['date' => 'required|date'])['date'];
+
+        $rows = BookingGroup::selectRaw(
+                "room_id,
+                 SUM(status IN ('pending','waiting_confirm')) as pending,
+                 SUM(status = 'confirmed') as booked"
+            )
+            ->where('date', $date)
+            ->whereIn('status', ['pending', 'waiting_confirm', 'confirmed'])
+            ->groupBy('room_id')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[$r->room_id] = ['pending' => (int) $r->pending, 'booked' => (int) $r->booked];
+        }
+
+        return response()->json($out);
+    }
+
+    /** ยกเลิกการจองที่ยืนยันแล้ว (pending/waiting ใช้ reject) */
+    public function cancelSession(Request $request)
+    {
+        $ids = $request->validate(['ids' => 'required|array', 'ids.*' => 'integer'])['ids'];
+
+        $groups = BookingGroup::whereIn('id', $ids)->where('status', 'confirmed')->get();
+
+        foreach ($groups as $g) {
+            $g->update(['status' => 'cancelled', 'cancelled_at' => Carbon::now()]);
+            $g->bookings()->update(['status' => 'cancelled']);
+        }
+
+        return response()->json(['message' => 'ยกเลิกเรียบร้อย', 'count' => $groups->count()]);
+    }
+
     public function staffStore(Request $request)
     {
         $data = $request->validate([
@@ -205,6 +360,7 @@ class AdminBookingController extends Controller
                         'lead_user_id'     => null,
                         'admin_id'         => $adminId,
                         'status'           => 'confirmed',
+                        'source'           => 'staff',
                         'join_token'       => Str::random(32),
                         'token_expires_at' => Carbon::now()->addMinutes(15),
                     ]);

@@ -42,9 +42,20 @@ locations
         ├── time_weekend → times.id  (config วันหยุด)
         ├── zone_daily_quota         (ชั่วโมงสูงสุด/วัน/user, ส่วนใหญ่ = 3)
         ├── min_capacity             (จำนวน member ขั้นต่ำสำหรับห้อง manual)
+        ├── zone_tools (zone_id, tool_id, quantity)  ← "คลังอุปกรณ์ภายในโซน" (pool ให้ห้องเลือกติ๊ก — ไม่ auto-inherit)
         └── rooms (zone_id → zones.id)
               ├── confirm_type: auto | manual
-              └── access_control: '0' = ไม่มี kiosk (เจ้าหน้าที่เช็คอิน), '1' = มี kiosk (สแกนเช็คอิน+อนุมัติเอง)
+              ├── access_control: '0' = ไม่มี kiosk (เจ้าหน้าที่เช็คอิน), '1' = มี kiosk (สแกนเช็คอิน+อนุมัติเอง)
+              └── roomtools (room_id, tool_id, mode, quantity)  ← อุปกรณ์ที่ห้องนี้ "มีจริง" (แอดมินติ๊กเอง)
+                    mode คงไว้ (ปัจจุบันใช้ 'add' อย่างเดียว)
+                    → อุปกรณ์ของห้อง = Room::effectiveTools() = roomtools ของห้องนั้น (ไม่ inherit จาก zone)
+
+tools  (คลังอุปกรณ์กลาง: name, icon) — ใช้ร่วมทุกโซน
+
+zones.scan_prefix  — prefix สร้าง scan_code เช่น "3F-CH"
+rooms.scan_code    — โค้ดบน QR sticker เช่น "3F-CH-012" (unique)
+booking_groups.source  — web | qr | staff
+scan_logs  — log ทุกครั้งที่สแกน /s/{code} (scan_code, room_id?, user_id?, outcome, ip, ua)
 
 times
   ├── id=1  จันทร์-ศุกร์ (ปกติ)    hour=9,  total=10  → 09:00–19:00
@@ -99,6 +110,12 @@ settings   (key–value config ทั้งระบบ)
   - ห้อง `access_control='1'`: รับทั้ง `waiting_confirm`/`confirmed` → promote `waiting_confirm→confirmed` + set `checked_in` ทุก slot ที่เหลือใน session (idempotent). `pending` (member ไม่ครบ) = ไม่ผ่าน
   - ห้อง `access_control='0'`: ต้อง `confirmed` มาก่อน (เจ้าหน้าที่ approve)
 - **no_show**: `markNoShow` mark ทุกห้อง (ไม่จำกัด auto) — `confirmed` ที่ slot จบแล้วยังไม่ `checked_in` → `no_show`
+- **Scan-to-Book** (`/s/{code}` → `ScanBookController`): QR ติดที่ตัว unit → สแกน = "ฉันอยู่ตรงนี้ ตอนนี้"
+  - ไม่ login → เก็บ intended → Google OAuth → กลับมา
+  - มี booking ตอนนี้ → เช็คอินให้ (ผ่าน `App\Support\ScanCheckin` — ตัวเดียวกับ Kiosk)
+  - คนอื่นจอง / นอกเวลา / วันหยุด / quota หมด → หน้าแจ้งเหตุ
+  - ว่าง → เลือก 1–3 ชม. → จอง (confirmed, source=qr) + เช็คอินให้เลย
+  - จองล่วงหน้าจาก QR ไม่ได้ (ไม่ตรงบริบท)
 
 ---
 
@@ -117,6 +134,8 @@ settings   (key–value config ทั้งระบบ)
 | POST | `/join/{token}` | เข้าร่วม session |
 | GET | `/auth/google` | Google OAuth redirect |
 | POST | `/logout` | Logout |
+| GET | `/s/{code}` | สแกน QR ที่ตัว unit → จอง/เช็คอิน (auth เช็คใน controller) |
+| POST | `/s/{code}/book` | จองจาก QR (confirmed, source=qr) + เช็คอินให้เลย |
 
 ### Admin (auth:admin)
 
@@ -125,11 +144,17 @@ settings   (key–value config ทั้งระบบ)
 | GET | `/dashboard` | Admin dashboard (SPA) |
 | GET | `/admin/overview-stats` | สถิติภาพรวม |
 | GET | `/admin/bookings` | รายการ booking ทั้งหมด |
+| GET | `/admin/bookings/room-day?room_id=&date=` | ผังห้อง: ช่องเวลา + รายชื่อผู้จองต่อช่อง (session ข้ามชั่วโมงโชว์ทุกช่อง + `is_continuation`) |
+| GET | `/admin/bookings/board-summary?date=` | ผังห้อง: จำนวน pending/booked ต่อห้อง (จุดสีบนปุ่มห้อง) |
 | POST | `/admin/bookings/approve` | Approve session (→ confirmed, ไม่เช็คอิน) |
-| POST | `/admin/bookings/reject` | Reject session |
+| POST | `/admin/bookings/reject` | Reject session (pending/waiting → cancelled) |
 | POST | `/admin/bookings/checkin` | เจ้าหน้าที่กดเช็คอิน (ห้อง access_control=0) |
+| POST | `/admin/bookings/cancel` | ยกเลิก session ที่ยืนยันแล้ว (confirmed → cancelled) |
 | POST | `/admin/bookings/staff` | Staff สร้าง booking แทน |
 | POST | `/admin/rooms/{room}/toggle-access` | เปิด/ปิด access control ของห้อง |
+| PUT | `/admin/zones/{zone}/tools` | ตั้งชุดอุปกรณ์มาตรฐานของ zone |
+| PUT | `/admin/rooms/{room}/tools` | ตั้ง override อุปกรณ์เฉพาะห้อง (add/remove) |
+| POST/PUT/DELETE | `/admin/tools` | คลังอุปกรณ์ (catalog) CRUD |
 | GET/POST/PUT/DELETE | `/admin/rooms` | จัดการ rooms/zones/locations |
 | GET/POST/DELETE | `/admin/holidays` | จัดการวันหยุด |
 | GET/POST/PUT/DELETE | `/admin/times` | จัดการ service hours |
@@ -137,6 +162,9 @@ settings   (key–value config ทั้งระบบ)
 | GET/POST/PUT/DELETE | `/admin/users` | จัดการ admin users |
 | GET/POST/DELETE | `/admin/kiosk-bypass` | จัดการ kiosk bypass codes |
 | GET/PUT | `/admin/settings` | ช่วงเวลาเปิด-ปิดระบบจอง (global) — แท็บ Service Hours |
+| PUT | `/admin/zones/{zone}/scan-prefix` | ตั้ง prefix สำหรับ generate scan_code |
+| POST/PUT | `/admin/rooms/{room}/scan-code` | สร้าง/แก้ scan_code ของห้อง |
+| GET | `/admin/zones/{zone}/qr-sheet` | หน้าพิมพ์ QR ทั้งโซน (Blade) |
 
 ### API (api.token middleware)
 
@@ -160,10 +188,10 @@ settings   (key–value config ทั้งระบบ)
 
 **Admin Panel (Dashboard.vue — SPA แบบ tab):**
 - [x] Overview: สถิติภาพรวม
-- [x] Bookings: แยก tab (รอดำเนินการ / จองล่วงหน้า / ยืนยันแล้ว / ยกเลิก) + ค้นหา ชื่อ/อีเมล/ห้อง + filter วันที่ + approve/reject (รองรับทั้ง pending และ waiting_confirm) + paginate 10/หน้า
+- [x] Bookings: 2 มุมมอง — **รายการ** (แยก tab รอดำเนินการ / จองล่วงหน้า / ยืนยันแล้ว / ยกเลิก + ค้นหา + filter วันที่ + approve/reject + paginate 10) / **ผังห้อง** (`BookingBoard.vue` — เลือกวัน → กริดปุ่มห้อง มีจุดสีบอกสถานะ → กดห้องดูตารางเวลา → กดช่องเวลาดูรายชื่อผู้จองทั้งหมด + approve/reject/checkin/cancel ในแผง)
   - tab "จองล่วงหน้า" = booking `date > วันนี้` (ปุ่ม "จองล่วงหน้า" เดิมชื่อ "จองห้องสำหรับเจ้าหน้าที่" → `staffStore`)
 - [x] Members: จัดการ member + member code
-- [x] Rooms: toggle เปิด/ปิด location/zone/room + แก้ไข zone settings
+- [x] Rooms: 3 sub-tab — สถานะพื้นที่ (toggle location/zone/room + kiosk) / ตั้งค่า Zone / **อุปกรณ์** (คลังอุปกรณ์ CRUD + ชุดมาตรฐานต่อ zone + override เฉพาะห้อง)
 - [x] Holidays: เพิ่ม/ลบวันหยุด
 - [x] Service Hours: จัดการ times config + ช่วงเวลาเปิด-ปิดระบบจอง (booking window, global)
 - [x] Admin Users: จัดการ admin accounts (role: admin/staff)

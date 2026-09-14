@@ -41,7 +41,7 @@ const entryStep = computed(() => {
         return { icon: "fa-qrcode", cls: "bg-blue-50 border-blue-200 text-blue-800", title: "วันใช้งาน — สแกน QR Code ที่หน้าห้อง", body: "สแกนด้วยรหัสนิสิต = อนุมัติ + เช็คอิน ในขั้นตอนเดียว ไม่ต้องรอเจ้าหน้าที่" };
     if (kiosk)
         return { icon: "fa-qrcode", cls: "bg-blue-50 border-blue-200 text-blue-800", title: "วันใช้งาน — สแกน QR Code ที่หน้าห้อง", body: "สแกนด้วยรหัสนิสิต แล้วเข้าใช้บริการได้เลย" };
-    return { icon: "fa-bell-concierge", cls: "bg-red-50 border-red-200 text-red-700", title: "วันใช้งาน — ติดต่อเจ้าหน้าที่ก่อนเข้าใช้บริการ", body: manual ? "เจ้าหน้าที่จะตรวจสอบการจอง อนุมัติ และเช็คอินให้ที่หน้าห้อง" : "แจ้งเจ้าหน้าที่ที่เคาน์เตอร์เพื่อขอเข้าใช้ห้อง" };
+    return { icon: "fa-bell-concierge", cls: "bg-slate-100 border-slate-300 text-slate-700", title: "วันใช้งาน — ติดต่อเจ้าหน้าที่ก่อนเข้าใช้บริการ", body: manual ? "เจ้าหน้าที่จะตรวจสอบการจอง อนุมัติ และเช็คอินให้ที่หน้าห้อง" : "แจ้งเจ้าหน้าที่ที่เคาน์เตอร์เพื่อขอเข้าใช้ห้อง" };
 });
 </script>
 
@@ -89,7 +89,7 @@ const entryStep = computed(() => {
                                 <i class="fa-solid fa-qrcode mr-0.5"></i>แสกน QR Code เพื่อเข้าใช้บริการ
                             </span>
                             <span v-else
-                                class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-200">
+                                class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-slate-100 text-slate-600 border-slate-300">
                                 <i class="fa-solid fa-bell-concierge mr-0.5"></i>ติดต่อเจ้าหน้าที่ก่อนเข้าใช้บริการ
                             </span>
                         </div>
@@ -182,7 +182,7 @@ const entryStep = computed(() => {
                     <div class="text-xs text-slate-500 mt-1 space-y-0.5">
                         <div><i class="fa-solid fa-calendar mr-1.5 text-slate-300"></i>วันนี้</div>
                         <div><i class="fa-solid fa-clock mr-1.5 text-slate-300"></i>10:00 – 12:00 น.</div>
-                        <div :class="sc.access_control === '1' ? 'text-blue-700' : 'text-red-600'">
+                        <div :class="sc.access_control === '1' ? 'text-blue-700' : 'text-slate-600'">
                             <i class="fa-solid mr-1.5" :class="sc.access_control === '1' ? 'fa-qrcode' : 'fa-bell-concierge'"></i>
                             {{ sc.access_control === '1' ? 'เข้าห้อง: สแกน QR Code ที่หน้าห้อง' : 'เข้าห้อง: ติดต่อเจ้าหน้าที่ก่อนเข้าใช้' }}
                         </div>

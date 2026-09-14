@@ -1,11 +1,12 @@
 <script setup>
 import { usePage, router } from "@inertiajs/vue3";
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 
 const props = defineProps({
     locations:      Array,
     todayIsHoliday: { type: Boolean, default: false },
     todayDate:      { type: String,  default: () => new Date().toISOString().split('T')[0] },
+    roomStatusPool: { type: Object,  default: () => ({ columns: [], rooms: [] }) },
 });
 
 const appBase = window.APP_BASE ?? '';
@@ -23,6 +24,89 @@ const currentZones    = computed(() => currentLocation.value?.zones ?? []);
 const zoneTitle  = (zone) => currentLang.value === 'en' ? (zone?.title_eng ?? zone?.title) : zone?.title;
 const zoneDetail = (zone) => zone?.detail ?? '';
 import Swal from "sweetalert2";
+
+// --- หน้าทดลอง: "บริการยอดนิยม" — สุ่ม 6 โซนจริงจากทั้งระบบ (สุ่มครั้งเดียวตอนโหลดหน้า ไม่สุ่มซ้ำทุก re-render) ---
+function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+const allZones = computed(() =>
+    (props.locations ?? []).flatMap((loc) => (loc.zones ?? []).map((z) => ({ ...z, __loc: loc })))
+);
+const featuredZones = computed(() => shuffle(allZones.value).slice(0, 6));
+
+// --- หน้าทดลอง: "สถานะห้องตอนนี้" — สุ่ม 4 ห้องจริงจาก pool ที่ backend ส่งมา (สุ่มครั้งเดียวตอนโหลดหน้า) ---
+const roomStatusFeatured = computed(() => shuffle(props.roomStatusPool.rooms ?? []).slice(0, 4));
+const roomStateLabel = { free: 'ว่าง', booked: 'มีคนใช้', closed: 'ปิด' };
+const roomStateBadgeCls = {
+    free:   'bg-emerald-500',
+    booked: 'bg-amber-500',
+    closed: 'bg-slate-500',
+};
+
+// --- หน้าทดลอง: แถบขั้นตอนการจอง (คงที่ ตามโฟลว์จริงของระบบ) ---
+const bookingSteps = computed(() =>
+    currentLang.value === 'en'
+        ? [
+              { title: 'Choose a Location', desc: 'Pick the building or area' },
+              { title: 'Choose a Zone', desc: 'Pick the room or service' },
+              { title: 'Choose a Time', desc: 'Pick an available time slot' },
+              { title: 'Confirm', desc: 'Review and confirm your booking' },
+          ]
+        : [
+              { title: 'เลือกพื้นที่', desc: 'อาคาร/พื้นที่ที่ต้องการ' },
+              { title: 'เลือกโซน', desc: 'ห้องหรือบริการที่ต้องการ' },
+              { title: 'เลือกเวลา', desc: 'วันและช่วงเวลาที่ว่าง' },
+              { title: 'ยืนยันการจอง', desc: 'ตรวจสอบและยืนยัน' },
+          ]
+);
+
+// --- หน้าทดลอง: Hero banner (สไลด์) ---
+// เพิ่มรูปสไลด์ได้โดยเติม object ในอาเรย์นี้ เช่น { image: "/imgs/banner-2.png" }
+// TODO: banner.jpg / locations/1.jpg เป็นรูปจริงที่มีอยู่แล้วในระบบ ใส่ไว้ให้เห็นสไลด์ทำงานก่อน
+// แนะนำเปลี่ยนเป็นรูปที่ออกแบบมาสำหรับสไลด์โดยเฉพาะ (สเปค 1600×460px ตามที่แนะนำไว้)
+const bannerSlides = [
+    { image: "/imgs/banner-1.png" },
+    { image: "/imgs/banner.jpg" },
+    { image: "/imgs/locations/1.jpg" },
+];
+const activeBanner = ref(0);
+let bannerTimer = null;
+
+const goToBanner = (i) => { activeBanner.value = i; };
+const nextBanner = () => { activeBanner.value = (activeBanner.value + 1) % bannerSlides.length; };
+const prevBanner = () => { activeBanner.value = (activeBanner.value - 1 + bannerSlides.length) % bannerSlides.length; };
+
+const stopBannerAutoplay = () => { if (bannerTimer) clearInterval(bannerTimer); };
+const startBannerAutoplay = () => {
+    if (bannerSlides.length < 2) return; // สไลด์เดียว ไม่ต้องเลื่อนอัตโนมัติ
+    stopBannerAutoplay();
+    bannerTimer = setInterval(nextBanner, 5000);
+};
+const pauseBanner  = () => stopBannerAutoplay();
+const resumeBanner = () => startBannerAutoplay();
+
+onMounted(() => startBannerAutoplay());
+onUnmounted(() => stopBannerAutoplay());
+
+// --- หน้าทดลอง: วน highlight "ขั้นตอนการจองพื้นที่" (ตกแต่งอย่างเดียว ไม่มีผลต่อข้อมูล) ---
+const activeStep = ref(0);
+let stepTimer = null;
+
+const stopStepLoop = () => { if (stepTimer) clearInterval(stepTimer); };
+const startStepLoop = () => {
+    stopStepLoop();
+    stepTimer = setInterval(() => {
+        activeStep.value = (activeStep.value + 1) % bookingSteps.value.length;
+    }, 2800);
+};
+
+onMounted(() => startStepLoop());
+onUnmounted(() => stopStepLoop());
 
 // --- 1. ระบบจัดการเปลี่ยนภาษา (Localization Dictionary) ---
 const currentLang = ref("th");
@@ -539,208 +623,128 @@ const hideToast = () => {
     <div
         class="flex flex-col min-h-screen font-sans bg-slate-50 text-slate-800"
     >
-        <!-- แถบด้านบนสุด (Top Utility Bar) -->
-        <div
-            class="px-4 py-2 text-xs text-white shadow-sm bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500"
+        <!-- ส่วนหัวของเว็บไซต์ (Header — ตามต้นแบบ: โลโก้ตัวหนังสือ + nav + ปุ่มเหลือง) -->
+        <header
+            id="top"
+            class="sticky top-0 z-40 bg-white border-b shadow-sm border-slate-100"
         >
             <div
-                class="flex flex-wrap items-center justify-between gap-2 mx-auto max-w-7xl"
+                class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 mx-auto max-w-7xl"
             >
-                <div class="flex flex-wrap items-center gap-4">
-                    <span class="flex items-center gap-1">
-                        <i class="fa-solid fa-phone"></i> 0-4375-4322-40 ต่อ
-                        2405, 2491
-                    </span>
-                    <span class="items-center hidden gap-1 md:inline-flex"
-                        >|</span
-                    >
-                    <span class="flex items-center gap-1">
-                        <i class="fa-solid fa-envelope"></i> library@msu.ac.th
-                    </span>
+                <!-- โลโก้ -->
+                <div class="flex items-center gap-2">
+                    <div class="leading-none">
+                        <span class="text-lg font-extrabold tracking-tight text-amber-400 font-prompt">
+                            MSU <span class="font-bold text-slate-900">LIBRARY</span>
+                        </span>
+                        <div class="text-[10px] font-bold tracking-wide text-slate-900">
+                            Academic Resource Center
+                        </div>
+                    </div>
                 </div>
-                <!-- สลับภาษา & ล็อกอิน -->
-                <div class="flex items-center gap-4">
-                    <div
-                        class="flex items-center overflow-hidden rounded bg-blue-950"
-                    >
+
+                <!-- เมนูหลัก -->
+                <nav class="flex flex-wrap items-center gap-1 text-sm text-slate-600 group">
+                    <!-- หน้าแรก = หน้าปัจจุบัน (bold+เส้นส้มค้างไว้) แต่พอ hover ไปเมนูอื่นในแถวเดียวกันให้หลบก่อน แล้วกลับมาเมื่อเมาส์ออกจากแถบเมนู -->
+                    <a href="#top"
+                        class="px-3 py-2 font-bold text-slate-900 transition-all border-b-4 border-amber-400 rounded-t-lg group-hover:font-normal group-hover:text-slate-600 group-hover:border-transparent hover:!font-bold hover:!text-slate-900 hover:!border-amber-400">หน้าแรก</a>
+                    <button @click="openModal('rules')"
+                        class="flex items-center gap-1.5 px-3 py-2 border-b-4 border-transparent rounded-t-lg transition-all hover:font-bold hover:text-slate-900 hover:border-amber-400">
+                        <span>{{ t("navRules") }}</span>
+                    </button>
+                    <a :href="`${appBase}/pdf/tools.pdf`" target="_blank" rel="noopener noreferrer"
+                        class="flex items-center gap-1.5 px-3 py-2 border-b-4 border-transparent rounded-t-lg transition-all hover:font-bold hover:text-slate-900 hover:border-amber-400">
+                        <span>{{ t("navManual") }}</span>
+                    </a>
+                    <a href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
+                        target="_blank" rel="noopener noreferrer"
+                        class="flex items-center gap-1.5 px-3 py-2 border-b-4 border-transparent rounded-t-lg transition-all hover:font-bold hover:text-slate-900 hover:border-amber-400">
+                        <span>{{ t("navFeedback") }}</span>
+                    </a>
+                </nav>
+
+                <!-- ภาษา / เข้าสู่ระบบ -->
+                <div class="flex items-center gap-2">
+                    <div class="items-center hidden overflow-hidden text-[10px] font-bold border rounded-lg sm:flex border-slate-200">
                         <button
                             @click="changeLanguage('th')"
-                            :class="
-                                currentLang === 'th'
-                                    ? 'bg-white text-slate-900'
-                                    : 'text-white hover:bg-blue-800'
-                            "
-                            class="px-2.5 py-1 font-bold text-[11px] transition-all"
-                        >
-                            TH
-                        </button>
+                            :class="currentLang === 'th' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'"
+                            class="px-2 py-1.5 transition-all"
+                        >TH</button>
                         <button
                             @click="changeLanguage('en')"
-                            :class="
-                                currentLang === 'en'
-                                    ? 'bg-white text-slate-900'
-                                    : 'text-white hover:bg-blue-800'
-                            "
-                            class="px-2.5 py-1 font-bold text-[11px] transition-all"
-                        >
-                            EN
-                        </button>
+                            :class="currentLang === 'en' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'"
+                            class="px-2 py-1.5 transition-all"
+                        >EN</button>
                     </div>
-                    <div v-if="!authUser">
-                        <a
-                            :href="`${appBase}/auth/google`"
-                            class="bg-white hover:bg-blue-950 text-slate-950 hover:text-white font-semibold px-3 py-1 rounded shadow transition-all flex items-center gap-1 text-[11px] md:text-xs"
-                        >
-                            <i class="fa-brands fa-google"></i>
-                            <span>{{ t("login") }}</span>
-                        </a>
-                    </div>
+
+                    <a v-if="!authUser" :href="`${appBase}/auth/google`"
+                        class="bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-all">
+                        <i class="fa-brands fa-google"></i>
+                        <span>{{ t("login") }}</span>
+                    </a>
                     <div v-else class="flex items-center gap-2">
-                        <span class="text-xs font-medium text-amber-400">
-                            <i class="fa-solid fa-circle-user"></i>
-                            <span class="ml-1">{{ authUser.name }}</span>
+                        <span class="hidden text-xs font-bold text-slate-700 sm:inline">
+                            <i class="mr-1 fa-solid fa-circle-user text-amber-500"></i>{{ authUser.name }}
                         </span>
                         <a :href="`${appBase}/my-bookings`"
-                            class="bg-white/20 hover:bg-white/30 text-white px-2 py-0.5 rounded text-[10px] transition-all flex items-center gap-1">
+                            class="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 py-2 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all">
                             <i class="fa-solid fa-calendar-check"></i>
                             <span>การจองของฉัน</span>
                         </a>
                         <button
                             @click="handleLogout"
-                            class="bg-red-600 hover:bg-red-700 text-white px-2 py-0.5 rounded text-[10px] transition-all"
-                        >
-                            <span>{{ t("logout") }}</span>
-                        </button>
+                            class="bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-500 px-3 py-2 rounded-lg text-[11px] font-bold transition-all"
+                        >{{ t("logout") }}</button>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- ส่วนหัวของเว็บไซต์ (Header & Banner Design) -->
-        <header
-            class="sticky top-0 z-40 bg-white border-b shadow-sm border-slate-200"
-        >
-            <div
-                class="flex flex-col items-center justify-between gap-4 px-4 py-3 mx-auto max-w-7xl md:flex-row"
-            >
-                <!-- โลโก้ และ ชื่อสำนักวิทยบริการ -->
-                <div class="flex items-center gap-3">
-                    <div
-                        class="flex items-center p-2 text-white rounded-lg shadow bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500"
-                    >
-                        <div
-                            class="pr-2 mr-2 text-xs font-bold text-center border-r border-white"
-                        >
-                            <div class="text-lg leading-none text-amber-400">
-                                MSU
-                            </div>
-                            <div
-                                class="text-[9px] tracking-widest text-slate-300"
-                            >
-                                LIBRARY
-                            </div>
-                        </div>
-                        <div>
-                            <h1
-                                class="text-sm font-bold leading-tight tracking-wide text-white md:text-base font-prompt"
-                            >
-                                STUDY ROOM SERVICE
-                            </h1>
-                            <p
-                                class="text-[10px] text-amber-400 font-medium tracking-wider"
-                            >
-                                ACADEMIC RESOURCE CENTER MSU
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- เมนูหลักตามที่โจทย์กำหนด (ข้อปฏิบัติ, คู่มือ, ประเมินความพึงพอใจ) -->
-                <nav
-                    class="flex flex-wrap items-center gap-2 text-xs md:gap-4 md:text-sm"
-                >
-                    <button
-                        @click="openModal('rules')"
-                        class="flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-all font-medium"
-                    >
-                        <i class="text-blue-600 fa-solid fa-file-shield"></i>
-                        <span>{{ t("navRules") }}</span>
-                    </button>
-                    <a
-                        :href="`${appBase}/pdf/tools.pdf`"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-all font-medium"
-                    >
-                        <i class="text-orange-500 fa-solid fa-book-open"></i>
-                        <span>{{ t("navManual") }}</span>
-                    </a>
-                    <a
-                        href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-all font-medium"
-                    >
-                        <i
-                            class="text-green-600 fa-solid fa-square-poll-vertical"
-                        ></i>
-                        <span>{{ t("navFeedback") }}</span>
-                    </a>
-                </nav>
             </div>
         </header>
 
-        <!-- ฮีโร่แบนเนอร์จำลองตามสีสไตล์ของแบนเนอร์จริง -->
-        <section
-            class="relative px-4 py-8 mt-8 overflow-hidden text-white md:py-12"
-            style="
-                background: url(&quot;/imgs/banner.jpg&quot;) center/cover
-                    no-repeat;
-                background-size: 55%;
-            "
-        >
-            <div
-                class="absolute inset-0 opacity-10 mix-blend-overlay bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"
+        <!-- ฮีโร่ (สไลด์) -->
+        <section class="relative w-full overflow-hidden bg-slate-950 aspect-[1277/368]"
+            @mouseenter="pauseBanner" @mouseleave="resumeBanner">
+            <div v-for="(slide, i) in bannerSlides" :key="slide.image"
+                class="absolute inset-0 transition-opacity duration-700 ease-in-out bg-center bg-cover"
+                :class="i === activeBanner ? 'opacity-100' : 'opacity-0'"
+                :style="{ backgroundImage: `url('${slide.image}')` }"
             ></div>
-            <div
-                class="relative z-10 grid items-center grid-cols-1 gap-6 mx-auto max-w-7xl lg:grid-cols-12"
-            >
-                <div class="space-y-4 lg:col-span-7"></div>
-                <!-- ประกาศสำคัญด้านข้าง -->
-                <div
-                    class="p-6 text-center border shadow-xl bg-white/90 lg:col-span-5 rounded-2xl border-white/50 md:text-left"
-                >
-                    <h3
-                        class="mb-3 text-base font-bold text-amber-500 font-prompt"
-                    >
-                        <i class="mr-1 fa-solid fa-bullhorn"></i>
-                        <span>{{ t("quickStatTitle") }}</span>
-                    </h3>
-                    <ul
-                        class="text-xs text-gray-900 space-y-2.5 list-disc list-inside"
-                    >
-                        <li>{{ t("ann1") }}</li>
-                        <li>{{ t("ann2") }}</li>
-                        <li>{{ t("ann3") }}</li>
-                    </ul>
+
+            <template v-if="bannerSlides.length > 1">
+                <button @click="prevBanner" aria-label="สไลด์ก่อนหน้า"
+                    class="absolute z-20 flex items-center justify-center w-8 h-8 transition-colors -translate-y-1/2 rounded-full left-3 top-1/2 bg-black/30 hover:bg-black/50">
+                    <i class="text-xs text-white fa-solid fa-chevron-left"></i>
+                </button>
+                <button @click="nextBanner" aria-label="สไลด์ถัดไป"
+                    class="absolute z-20 flex items-center justify-center w-8 h-8 transition-colors -translate-y-1/2 rounded-full right-3 top-1/2 bg-black/30 hover:bg-black/50">
+                    <i class="text-xs text-white fa-solid fa-chevron-right"></i>
+                </button>
+                <div class="absolute z-20 flex items-center gap-1.5 -translate-x-1/2 bottom-3 left-1/2">
+                    <button v-for="(slide, i) in bannerSlides" :key="`dot-${i}`" @click="goToBanner(i)"
+                        :aria-label="`ไปที่สไลด์ ${i + 1}`"
+                        class="h-1.5 rounded-full transition-all"
+                        :class="i === activeBanner ? 'w-6 bg-white' : 'w-1.5 bg-white/50 hover:bg-white/70'"
+                    ></button>
                 </div>
-            </div>
+            </template>
         </section>
 
-        <!-- ส่วนเนื้อหาหลัก: พื้นที่ให้บริการ 3 พื้นที่หลัก -->
-        <main class="flex-grow w-full px-4 py-8 mx-auto max-w-7xl">
-            <!-- หัวข้อหน้าเว็บ -->
-            <div class="mb-8 text-center">
-                <h2
-                    class="flex items-center justify-center gap-2 text-2xl font-extrabold text-blue-900 md:text-3xl font-prompt"
-                >
-                    <i class="text-orange-500 fa-solid fa-chalkboard-user"></i>
-                    <span>{{ t("mainTitle") }}</span>
-                </h2>
-                <p class="max-w-2xl mx-auto mt-2 text-sm text-slate-500">
-                    {{ t("mainSub") }}
-                </p>
+        <!-- แถบประกาศสำคัญ (เนื้อหาจริงจากระบบเดิม) -->
+        <div class="border-b bg-amber-50 border-amber-100">
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2.5 mx-auto text-xs text-slate-900 max-w-[1600px]">
+                <span class="font-bold shrink-0">
+                    <i class="mr-1 fa-solid fa-bullhorn"></i>{{ t("quickStatTitle") }}
+                </span>
+                <span>{{ t("ann1") }}</span>
+                <span class="hidden sm:inline text-amber-300">•</span>
+                <span class="hidden sm:inline">{{ t("ann2") }}</span>
+                <span class="hidden md:inline text-amber-300">•</span>
+                <span class="hidden md:inline">{{ t("ann3") }}</span>
             </div>
+        </div>
+
+        <!-- ส่วนเนื้อหาหลัก -->
+        <main class="flex-grow w-full px-4 py-10 mx-auto max-w-[1400px]">
 
             <!-- แบนเนอร์วันหยุด -->
             <div v-if="props.todayIsHoliday"
@@ -755,333 +759,246 @@ const hideToast = () => {
                 </div>
             </div>
 
-            <!-- แท็บสลับพื้นที่การดูข้อมูล -->
-            <div
-                class="flex flex-col gap-2 p-2 mb-8 bg-white border shadow-sm rounded-xl border-slate-200 sm:flex-row"
-            >
-                <button
-                    v-for="(loc, i) in locations"
-                    :key="loc.id"
-                    @click="switchArea(i + 1)"
-                    :class="
-                        activeArea === i + 1
-                            ? 'bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500 text-white shadow'
-                            : 'text-slate-600 hover:bg-slate-100'
-                    "
-                    class="relative flex items-center justify-center flex-1 gap-2 px-4 py-3 text-sm font-bold transition-all rounded-lg"
-                >
-                    <i
-                        v-if="activeArea !== i + 1"
-                        class="absolute hidden text-2xl -translate-x-1/2 tab-hint fa-solid fa-circle-down sm:block left-1/2 -top-6"
-                        aria-hidden="true"
-                    ></i>
-                    <i class="fa-solid" :class="locationIcons[i]"></i>
-                    <span>{{ locTitle(loc) }}</span>
-                </button>
-            </div>
-
-            <Transition name="tab" mode="out-in">
-            <div :key="activeArea">
-
-            <!-- location section (unified, driven by currentLocation) -->
-            <div v-if="!props.todayIsHoliday" class="space-y-6">
-                <div
-                    class="flex flex-col items-center justify-between gap-4 p-5 border bg-gradient-to-r rounded-xl md:flex-row"
-                    :class="currentLocation?.status === '0'
-                        ? 'from-green-50 to-emerald-50 border-green-200/65'
-                        : 'from-red-50 to-orange-50 border-red-200/65'"
-                >
-                    <div>
-                        <h3 class="flex items-center gap-2 text-lg font-bold text-slate-900 font-prompt">
-                            <span
-                                class="w-2.5 h-2.5 rounded-full"
-                                :class="currentLocation?.status === '0' ? 'bg-green-500' : 'bg-red-400'"
-                            ></span>
-                            <span>{{ locTitle(currentLocation) }}</span>
-                        </h3>
-                        <p class="mt-1 text-xs text-slate-600">{{ currentLocation?.detail }}</p>
-                    </div>
-                    <div
-                        class="text-xs font-bold bg-white px-3 py-1.5 rounded-lg border shadow-sm"
-                        :class="currentLocation?.status === '0' ? 'text-green-800 border-green-200' : 'text-red-700 border-red-200'"
+            <!-- ═══ เลือกพื้นที่บริการ (3 location จริง) ═══ -->
+            <section id="locations" class="mb-8">
+                <h2 class="flex items-center gap-2 mb-4 text-xl font-extrabold text-slate-900 font-prompt">
+                    <span class="w-1.5 h-6 rounded-full bg-amber-400"></span>
+                    เลือกพื้นที่บริการ
+                </h2>
+                <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+                    <button
+                        v-for="(loc, i) in locations" :key="loc.id"
+                        @click="switchArea(i + 1)"
+                        class="relative overflow-hidden text-left transition-all bg-white border-2 border-transparent shadow-sm group rounded-2xl hover:border-amber-400 hover:shadow-lg"
                     >
-                        <i
-                            class="mr-1 fa-solid"
-                            :class="currentLocation?.status === '0' ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500'"
-                        ></i>
-                        <span>{{ currentLocation?.status === '0' ? t("activeArea") : 'ไม่พร้อมใช้งาน' }}</span>
-                    </div>
-                </div>
-
-                <div
-                    v-if="currentLocation?.status === '0'"
-                    class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
-                >
-                    <div
-                        v-for="zone in currentZones"
-                        :key="zone.id"
-                        class="flex flex-col overflow-hidden transition-all bg-white border shadow-sm rounded-xl border-slate-200 hover:shadow-md"
-                    >
-                        <div class="relative flex items-center justify-center h-48 bg-slate-100">
-                            <img
-                                v-if="zone.pic"
-                                :src="`/imgs/zones/${zone.pic}`"
-                                :alt="zoneTitle(zone)"
-                                class="object-cover w-full h-full"
-                            />
-                            <i v-else class="text-5xl text-slate-300 fa-solid fa-image"></i>
-                            <span class="absolute top-3 left-3 text-white text-xs px-2.5 py-1 rounded-full font-bold"
-                                :class="zone.status === '0' ? 'bg-blue-900' : 'bg-red-600'"
-                            >{{ zone.status === '0' ? zoneTitle(zone) : 'ปิดให้บริการ' }}</span>
+                        <div class="h-40 overflow-hidden bg-slate-100">
+                            <img :src="`/imgs/locations/${i + 1}.jpg`" :alt="locTitle(loc)"
+                                class="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105" />
                         </div>
-                        <div class="flex flex-col justify-between flex-grow p-5">
-                            <div>
-                                <h4 class="flex items-center justify-between mb-1 text-base font-bold text-slate-900 font-prompt">
-                                    <span>{{ zoneTitle(zone) }}</span>
-                                    <span
-                                        class="text-xs px-2 py-0.5 rounded border"
-                                        :class="zone.status === '0'
-                                            ? 'text-green-600 bg-green-50 border-green-200'
-                                            : 'text-red-600 bg-red-50 border-red-200'"
-                                    ><i class="fa-solid fa-circle text-[6px] mr-1"></i><span>{{ zone.status === '0' ? 'ว่าง' : 'ไม่ว่าง' }}</span></span>
-                                </h4>
-                                <p class="mb-4 text-xs text-slate-500">{{ zoneDetail(zone) }}</p>
-                                <div class="p-3 mb-6 space-y-2 text-xs rounded-lg text-slate-600 bg-slate-50">
-                                    <div class="flex justify-between">
-                                        <span><i class="fa-solid fa-users mr-1.5 text-slate-400"></i>ความจุ</span>
-                                        <span class="font-bold">{{ zone.capacity }}</span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span><i class="fa-solid fa-plug mr-1.5 text-slate-400"></i>สิ่งอำนวยความสะดวก</span>
-                                        <span class="font-bold text-right max-w-[55%]">{{ zone.tool }}</span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span><i class="fa-solid fa-clock mr-1.5 text-slate-400"></i>โควต้าต่อวัน</span>
-                                        <span class="font-bold">{{ zone.zone_daily_quota ? zone.zone_daily_quota + ' ชม.' : 'ไม่จำกัด' }}</span>
-                                    </div>
+                        <div class="flex items-start justify-between gap-2 p-4">
+                            <div class="min-w-0">
+                                <h3 class="text-sm font-bold text-slate-900 font-prompt">{{ locTitle(loc) }}</h3>
+                                <p class="mt-1 text-xs text-slate-500 line-clamp-2">{{ loc.detail }}</p>
+                            </div>
+                            <span class="flex items-center justify-center w-8 h-8 text-sm transition-colors rounded-full shrink-0 bg-amber-400 text-slate-900 group-hover:bg-amber-500">
+                                <i class="fa-solid fa-arrow-right"></i>
+                            </span>
+                        </div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- ═══ ขั้นตอนการจองพื้นที่ (วน highlight อัตโนมัติ หยุดเมื่อชี้เมาส์) ═══ -->
+            <section class="p-5 mb-8 bg-white border shadow-sm rounded-2xl border-slate-200"
+                @mouseenter="stopStepLoop" @mouseleave="startStepLoop">
+                <div class="flex flex-col gap-6 lg:flex-row lg:items-center">
+                    <div class="shrink-0 lg:w-48">
+                        <h2 class="flex items-center gap-2 text-lg font-extrabold text-slate-900 font-prompt">
+                            <span class="w-1.5 h-5 rounded-full bg-amber-400"></span>ขั้นตอนการจองพื้นที่
+                        </h2>
+                        <p class="mt-1 text-sm text-slate-400">จองง่าย ใช้เวลาไม่กี่ขั้นตอน</p>
+                    </div>
+
+                    <!-- จอเล็ก: กริด 2 คอลัมน์ ไม่มีเส้นเชื่อม -->
+                    <div class="grid flex-1 grid-cols-2 gap-4 lg:hidden">
+                        <div v-for="(step, i) in bookingSteps" :key="i" class="flex items-start gap-3">
+                            <span class="flex items-center justify-center text-sm font-extrabold transition-colors duration-500 rounded-full w-9 h-9 shrink-0 text-slate-900"
+                                :class="i === activeStep ? 'bg-amber-400' : 'bg-slate-100 border-2 border-slate-200'"
+                            >{{ i + 1 }}</span>
+                            <div class="min-w-0 text-left">
+                                <div class="text-xs font-bold text-slate-800">{{ step.title }}</div>
+                                <div class="text-[11px] text-slate-400 mt-0.5">{{ step.desc }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- จอใหญ่: แถวเดียว มีเส้นประเชื่อมระหว่างขั้นตอน -->
+                    <div class="flex-1 hidden lg:flex lg:items-start">
+                        <template v-for="(step, i) in bookingSteps" :key="`d-${i}`">
+                            <div class="flex items-start flex-1 min-w-0 gap-3 px-1">
+                                <span class="flex items-center justify-center text-sm font-extrabold rounded-full w-9 h-9 shrink-0 text-slate-900"
+                                    :class="i === 0 ? 'bg-amber-400' : 'bg-slate-100 border-2 border-slate-200'"
+                                >{{ i + 1 }}</span>
+                                <div class="min-w-0 text-left">
+                                    <div class="text-xs font-bold text-slate-800">{{ step.title }}</div>
+                                    <div class="text-[11px] text-slate-400 mt-0.5">{{ step.desc }}</div>
                                 </div>
                             </div>
-                            <button
-                                @click="initiateBooking(zone)"
-                                :disabled="zone.status !== '0'"
-                                :class="zone.status === '0' ? 'bg-blue-900 hover:bg-blue-950 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'"
-                                class="w-full mt-4 font-bold py-2 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <i :class="zone.status === '0' ? 'fa-solid fa-calendar-check' : 'fa-solid fa-ban'"></i>
-                                <span>{{ zone.status === '0' ? t('btnBook') : t('btnUnavailable') }}</span>
-                            </button>
+                            <div v-if="i < bookingSteps.length - 1"
+                                class="flex-1 min-w-[12px] border-t-2 border-dashed border-amber-200 mt-[18px]"></div>
+                        </template>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ═══ บริการยอดนิยม (สุ่ม 6 โซนจริงจากทั้งระบบ) ═══ -->
+            <section class="mb-8">
+                <h2 class="flex items-center gap-2 mb-4 text-lg font-extrabold text-slate-900 font-prompt">
+                    <span class="w-1.5 h-6 rounded-full bg-amber-400"></span>บริการยอดนิยม
+                </h2>
+                <div class="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    <button
+                        v-for="zone in featuredZones" :key="zone.id"
+                        @click="zone.status === '0' && initiateBooking(zone)"
+                        class="overflow-hidden text-left transition-all bg-white border shadow-sm group rounded-2xl border-slate-200 hover:shadow-md"
+                    >
+                        <div class="h-24 overflow-hidden bg-slate-100">
+                            <img v-if="zone.pic" :src="`/imgs/zones/${zone.pic}`" :alt="zoneTitle(zone)"
+                                class="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105" />
+                        </div>
+                        <div class="p-3">
+                            <h4 class="text-xs font-bold truncate text-slate-900">{{ zoneTitle(zone) }}</h4>
+                            <p class="text-[10px] text-slate-400 truncate mt-0.5">{{ zone.__loc?.title }}</p>
+                            <span class="flex items-center justify-center w-full gap-1 mt-2 text-xs font-bold text-slate-900 bg-amber-400 group-hover:bg-amber-500 px-2 py-1.5 rounded-lg transition-colors">
+                                จองเลย <i class="fa-solid fa-arrow-right text-[8px]"></i>
+                            </span>
+                        </div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- ═══ สถานะห้องตอนนี้ (สุ่ม 4 ห้องจริงจากทั้งระบบ — ทดลอง เอาออกได้ถ้าไม่ชอบ) ═══ -->
+            <section class="mb-8">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                    <h2 class="flex items-center gap-2 text-lg font-extrabold text-slate-900 font-prompt">
+                        <span class="w-1.5 h-6 rounded-full bg-amber-400"></span>สถานะห้องตอนนี้
+                    </h2>
+                    <div class="flex items-center gap-4 text-[11px] text-slate-500">
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>ว่าง</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>มีคนใช้</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>ปิด</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div v-for="(r, i) in roomStatusFeatured" :key="i"
+                        class="overflow-hidden bg-white border shadow-sm rounded-2xl border-slate-200">
+                        <div class="relative h-24 overflow-hidden bg-slate-100">
+                            <img v-if="r.zone_pic" :src="`/imgs/zones/${r.zone_pic}`" :alt="r.room_title"
+                                class="object-cover w-full h-full" />
+                            <span class="absolute flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-white rounded-full top-2 right-2"
+                                :class="roomStateBadgeCls[r.state]">
+                                <span class="w-1.5 h-1.5 bg-white rounded-full"></span>{{ roomStateLabel[r.state] }}
+                            </span>
+                        </div>
+                        <div class="p-3">
+                            <h4 class="text-xs font-bold truncate text-slate-900">{{ r.room_title }}</h4>
+                            <p class="text-[10px] text-slate-400 truncate mt-0.5">{{ r.loc_title }} · {{ r.zone_title }}</p>
                         </div>
                     </div>
                 </div>
-            </div>
+                <p class="mt-2 text-[11px] text-slate-400">* สุ่มแสดง 4 ห้องจากทั้งระบบ — สถานะ ณ เวลาปัจจุบัน ({{ todayDate }})</p>
 
-            </div>
-            </Transition>
+                <!-- แบบตาราง (ห้องเดียวกับการ์ดด้านบน) — ไว้เทียบเลือกรูปแบบ นำเสนอผู้บริหาร -->
+                <p class="mt-6 mb-2 text-xs font-bold text-slate-500">แบบตาราง (ห้องเดียวกับด้านบน — ดูภาพรวมทั้งวัน)</p>
+                <div class="p-4 overflow-x-auto bg-white border shadow-sm rounded-2xl border-slate-200">
+                    <table class="w-full text-xs border-collapse">
+                        <thead>
+                            <tr>
+                                <th class="p-2 font-bold text-left text-slate-500">ห้อง / เวลา</th>
+                                <th v-for="col in roomStatusPool.columns" :key="col" class="p-2 font-bold text-center text-slate-500">{{ col }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(r, i) in roomStatusFeatured" :key="i" class="border-t border-slate-100">
+                                <td class="p-2 font-bold whitespace-nowrap text-slate-800">
+                                    {{ r.room_title }}
+                                    <div class="text-[10px] font-normal text-slate-400">{{ r.loc_title }} · {{ r.zone_title }}</div>
+                                </td>
+                                <td v-for="(state, j) in r.cells" :key="j" class="p-2 text-center">
+                                    <span class="inline-block w-2.5 h-2.5 rounded-full"
+                                        :class="state === 'booked' ? 'bg-amber-500' : state === 'closed' ? 'bg-slate-300' : 'bg-emerald-500'"></span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </main>
 
-        
 
-        <!-- ข้อมูลสถิติของห้องสมุดภาพรวม -->
-        <section
-            class="py-10 mt-12 text-white bg-blue-900 border-t-4 border-amber-500"
-        >
-            <div
-                class="grid grid-cols-2 gap-6 px-4 mx-auto text-center max-w-7xl md:grid-cols-4"
-            >
-                <div class="space-y-1">
-                    <div
-                        class="text-3xl font-extrabold md:text-4xl text-amber-400 font-prompt"
-                    >
-                        3
-                    </div>
-                    <div
-                        class="text-xs tracking-wider uppercase text-slate-300"
-                    >
-                        {{ t("statArea") }}
-                    </div>
-                </div>
-                <div class="space-y-1">
-                    <div
-                        class="text-3xl font-extrabold md:text-4xl text-amber-400 font-prompt"
-                    >
-                        48
-                    </div>
-                    <div
-                        class="text-xs tracking-wider uppercase text-slate-300"
-                    >
-                        {{ t("statRoom") }}
-                    </div>
-                </div>
-                <div class="space-y-1">
-                    <div
-                        class="text-3xl font-extrabold md:text-4xl text-amber-400 font-prompt"
-                    >
-                        1,200+
-                    </div>
-                    <div
-                        class="text-xs tracking-wider uppercase text-slate-300"
-                    >
-                        {{ t("statDaily") }}
-                    </div>
-                </div>
-                <div class="space-y-1">
-                    <div
-                        class="text-3xl font-extrabold md:text-4xl text-amber-400 font-prompt"
-                    >
-                        98.2%
-                    </div>
-                    <div
-                        class="text-xs tracking-wider uppercase text-slate-300"
-                    >
-                        {{ t("statSatisfaction") }}
-                    </div>
-                </div>
-            </div>
-        </section>
 
         <!-- FOOTER ข้อมูลการติดต่อ -->
-        <footer class="mt-auto text-white bg-slate-900">
-            <div
-                class="h-2 bg-gradient-to-r from-blue-700 via-blue-900 to-amber-500"
-            ></div>
-            <div class="px-4 py-8 mx-auto max-w-7xl">
-                <div class="grid grid-cols-1 gap-8 md:grid-cols-12">
-                    <!-- คอลัมน์ที่ 1 -->
-                    <div class="space-y-4 md:col-span-6">
-                        <div class="flex items-center gap-3">
-                            <div
-                                class="bg-blue-800 p-1.5 rounded text-xs font-bold text-amber-400"
-                            >
-                                MSU
-                            </div>
-                            <h4
-                                class="text-sm font-bold text-slate-100 font-prompt"
-                            >
-                                {{ t("footerName") }}
-                            </h4>
+        <footer class="mt-auto text-white bg-black">
+            <div class="px-4 py-10 mx-auto max-w-[1600px]">
+                <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-4">
+                    <!-- คอลัมน์ที่ 1: โลโก้ -->
+                    <div class="flex items-start gap-3">
+                        <div class="flex items-center justify-center w-12 h-12 bg-black border-2 border-white rounded-full shrink-0">
+                            <i class="text-lg text-white fa-solid fa-landmark"></i>
                         </div>
-                        <p
-                            class="max-w-md text-xs leading-relaxed text-slate-400"
-                        >
-                            ต.ขามเรียง อ.กันทรวิชัย จ.มหาสารคาม 44150 <br />
-                            โทร : 0-4375-4322-40 ต่อ 2491, 2405
-                            <br />
-                            แฟกซ์ : 0-4375-4358 <br />
-                            อีเมล : library@msu.ac.th
-                        </p>
+                        <div class="leading-snug">
+                            <div class="text-sm font-extrabold tracking-tight font-prompt">MSU LIBRARY</div>
+                            <div class="text-xs text-slate-400">Academic Resource Center</div>
+                            <div class="text-xs text-slate-400">Mahasarakham University</div>
+                        </div>
                     </div>
 
-                    <!-- คอลัมน์ที่ 2 -->
-                    <div class="space-y-3 md:col-span-3">
-                        <h5
-                            class="text-xs font-bold tracking-wider uppercase text-amber-400 font-prompt"
-                        >
-                            {{ t("footerQuickLink") }}
+                    <!-- คอลัมน์ที่ 2: แท็กไลน์ -->
+                    <div>
+                        <p class="leading-snug text-md font-prompt">
+                            พื้นที่แห่งการเรียนรู้<br />เพื่ออนาคตที่มากกว่า
+                        </p>
+                        <div class="w-10 h-0.5 bg-amber-400 my-2.5"></div>
+                        <p class="text-[11px] tracking-[0.15em] text-slate-400 uppercase">More than a Library</p>
+                    </div>
+
+                    <!-- คอลัมน์ที่ 3: ติดต่อเรา -->
+                    <div>
+                        <h5 class="mb-3 text-sm font-bold tracking-wider uppercase text-slate-300 font-prompt">
+                            ติดต่อเรา
                         </h5>
-                        <ul class="space-y-2 text-xs text-slate-400">
-                            <li>
-                                <a
-                                    href="https://library.msu.ac.th"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="transition-colors hover:text-amber-400"
-                                    ><i
-                                        class="fa-solid fa-chevron-right text-[8px] mr-1"
-                                    ></i>
-                                    เว็บไซต์สำนักวิทยบริการ</a
-                                >
+                        <ul class="space-y-2.5 text-xs text-slate-400">
+                            <li class="flex items-start gap-2">
+                                <i class="mt-0.5 fa-solid fa-location-dot text-white"></i>
+                                <span>สำนักวิทยบริการ มหาวิทยาลัยมหาสารคาม<br />ต.ขามเรียง อ.กันทรวิชัย จ.มหาสารคาม 44150</span>
                             </li>
-                            <li>
-                                <button
-                                    @click="openModal('rules')"
-                                    class="text-left transition-colors hover:text-amber-400"
-                                >
-                                    <i
-                                        class="fa-solid fa-chevron-right text-[8px] mr-1"
-                                    ></i>
-                                    <span>{{ t("navRules") }}</span>
-                                </button>
+                            <li class="flex items-center gap-2">
+                                <i class="text-white fa-solid fa-phone"></i>
+                                <span>0-4375-4322-40 ต่อ 2491, 2405</span>
                             </li>
-                            <li>
-                                <a
-                                    :href="`${appBase}/pdf/tools.pdf`"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="text-left transition-colors hover:text-amber-400"
-                                >
-                                    <i
-                                        class="fa-solid fa-chevron-right text-[8px] mr-1"
-                                    ></i>
-                                    <span>{{ t("navManual") }}</span>
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="text-left transition-colors hover:text-amber-400"
-                                >
-                                    <i
-                                        class="fa-solid fa-chevron-right text-[8px] mr-1"
-                                    ></i>
-                                    <span>{{ t("navFeedback") }}</span>
-                                </a>
+                            <li class="flex items-center gap-2">
+                                <i class="text-white fa-solid fa-envelope"></i>
+                                <span>library@msu.ac.th</span>
                             </li>
                         </ul>
                     </div>
 
-                    <!-- คอลัมน์ที่ 3 -->
-                    <div class="space-y-3 md:col-span-3">
-                        <h5
-                            class="text-xs font-bold tracking-wider uppercase text-amber-400 font-prompt"
-                        >
-                            {{ t("footerSocial") }}
-                        </h5>
-                        <div
-                            class="flex flex-col gap-2.5 text-xs text-slate-400"
-                        >
-                            <a
-                                href="#"
-                                class="flex items-center gap-2 transition-colors hover:text-green-400"
-                            >
-                                <i
-                                    class="text-lg text-green-500 fa-brands fa-whatsapp"
-                                ></i>
-                                <span>@msulibrary</span>
-                            </a>
-                            <a
-                                href="#"
-                                class="flex items-center gap-2 transition-colors hover:text-blue-400"
-                            >
-                                <i
-                                    class="text-lg text-blue-500 fa-brands fa-facebook"
-                                ></i>
-                                <span>MSU Academic Resource Center</span>
-                            </a>
-                            <a
-                                href="https://library.msu.ac.th"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                class="flex items-center gap-2 transition-colors hover:text-amber-400"
-                            >
-                                <i
-                                    class="text-lg fa-solid fa-globe text-amber-500"
-                                ></i>
-                                <span>library.msu.ac.th</span>
-                            </a>
+                    <!-- คอลัมน์ที่ 4: ติดตามเรา -->
+                    <div class="flex flex-col justify-between">
+                        <div>
+                            <h5 class="mb-3 text-sm font-bold tracking-wider uppercase text-slate-300 font-prompt">
+                                ติดตามเรา
+                            </h5>
+                            <div class="flex items-center gap-2.5">
+                                <a href="#" aria-label="Facebook"
+                                    class="flex items-center justify-center transition-colors bg-white rounded-full w-9 h-9 hover:bg-amber-400 text-slate-900">
+                                    <i class="fa-brands fa-facebook-f"></i>
+                                </a>
+                                <a href="#" aria-label="LINE"
+                                    class="flex items-center justify-center transition-colors bg-white rounded-full w-9 h-9 hover:bg-amber-400 text-slate-900">
+                                    <i class="fa-solid fa-comment"></i>
+                                </a>
+                                <a href="https://library.msu.ac.th" target="_blank" rel="noopener noreferrer" aria-label="เว็บไซต์"
+                                    class="flex items-center justify-center transition-colors bg-white rounded-full w-9 h-9 hover:bg-amber-400 text-slate-900">
+                                    <i class="fa-solid fa-globe"></i>
+                                </a>
+                                <a href="https://library.msu.ac.th" target="_blank" rel="noopener noreferrer" aria-label="เว็บไซต์"
+                                    class="flex items-center justify-center transition-colors bg-white rounded-full w-9 h-9 hover:bg-amber-400 text-slate-900">
+                                    <i class="fa-brands fa-instagram"></i>
+                                </a>
+                            </div>
                         </div>
+                        <p class="mt-6 text-[10px] text-slate-500 uppercase tracking-[0.1em] sm:text-right">
+                            Mahasarakham University<br />All for a Better Tomorrow
+                        </p>
                     </div>
                 </div>
 
                 <!-- ลิขสิทธิ์ @2026 -->
                 <div
-                    class="flex flex-col items-center justify-between gap-4 pt-4 mt-8 text-xs border-t border-slate-800 sm:flex-row text-slate-500"
+                    class="flex flex-col items-center justify-between gap-2 pt-6 mt-8 text-xs border-t border-slate-800 sm:flex-row text-slate-500"
                 >
-                    <p>
-                        &copy; 2026 สำนักวิทยบริการ มหาวิทยาลัยมหาสารคาม.
-                        สงวนลิขสิทธิ์ทั้งหมด.
-                    </p>
+                    <p>&copy; 2026 สำนักวิทยบริการ มหาวิทยาลัยมหาสารคาม. สงวนลิขสิทธิ์ทั้งหมด.</p>
                     <p class="text-[10px]">{{ t("footerDeveloped") }}</p>
                 </div>
             </div>
@@ -1504,7 +1421,7 @@ const hideToast = () => {
                     <div class="p-3 border bg-slate-50 border-slate-200 rounded-xl">
                         <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">พื้นที่</div>
                         <div class="font-bold text-blue-900 text-sm pt-0.5">{{ selectedZone ? zoneTitle(selectedZone) : '' }}</div>
-                        <div v-if="selectedZone?.equipment?.length" class="mt-2 pt-2 border-t border-slate-200">
+                        <div v-if="selectedZone?.equipment?.length" class="pt-2 mt-2 border-t border-slate-200">
                             <div class="text-[10px] text-slate-400 font-semibold mb-1">ชุดอุปกรณ์ภายในโซน</div>
                             <div class="flex flex-wrap gap-1">
                                 <span v-for="rt in selectedZone.equipment" :key="rt.tool_id"
@@ -1580,13 +1497,13 @@ const hideToast = () => {
                                         : 'bg-white border-slate-200 text-slate-700 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'"
                                     class="border rounded-lg px-1.5 py-2 text-[11px] font-semibold text-center transition-all leading-tight flex flex-col items-center gap-0.5"
                                 >
-                                    <span class="truncate w-full">{{ room.title }}</span>
+                                    <span class="w-full truncate">{{ room.title }}</span>
                                     <span v-if="room.status === '1'" class="text-[9px] font-normal">ปิด</span>
                                     <span v-else class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                 </button>
                             </div>
                             <p class="text-[10px] text-slate-400 pt-1">
-                                <i class="fa-regular fa-hand-pointer mr-1"></i>แตะเลือกห้อง แล้วดูรายละเอียด + เวลาที่ว่างในขั้นถัดไป
+                                <i class="mr-1 fa-regular fa-hand-pointer"></i>แตะเลือกห้อง แล้วดูรายละเอียด + เวลาที่ว่างในขั้นถัดไป
                             </p>
                         </template>
 

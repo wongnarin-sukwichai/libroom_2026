@@ -8,7 +8,7 @@ class RoomTool extends Model
 {
     protected $table = 'roomtools';
 
-    protected $fillable = ['room_id', 'tool_id', 'quantity', 'status', 'note'];
+    protected $fillable = ['room_id', 'tool_id', 'mode', 'quantity', 'status', 'note'];
 
     public function tool()
     {

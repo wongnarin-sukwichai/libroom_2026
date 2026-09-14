@@ -11,7 +11,7 @@ class Zone extends Model
     protected $fillable = [
         'pic', 'loc_id', 'title', 'title_eng', 'detail',
         'capacity', 'tool', 'min_capacity', 'zone_daily_quota',
-        'time_weekday', 'time_weekend', 'status',
+        'time_weekday', 'time_weekend', 'status', 'scan_prefix',
     ];
 
     public function location()
@@ -22,5 +22,10 @@ class Zone extends Model
     public function rooms()
     {
         return $this->hasMany(Room::class, 'zone_id');
+    }
+
+    public function tools()
+    {
+        return $this->hasMany(ZoneTool::class, 'zone_id');
     }
 }

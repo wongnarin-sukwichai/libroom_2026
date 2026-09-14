@@ -3,15 +3,19 @@ import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 
-interface RoomRow  { id: number; title: string; confirm_type: string; access_control: string; status: string }
-interface ZoneRow  { id: number; title: string; status: string; zone_daily_quota: number | null; time_weekday: number; time_weekend: number; min_capacity: number; rooms: RoomRow[] }
+interface ToolItem { id: number; name: string; icon: string }
+interface ZoneToolRow { tool_id: number; quantity: number }
+interface RoomToolRow { tool_id: number; mode: 'add' | 'remove'; quantity: number }
+interface RoomRow  { id: number; title: string; confirm_type: string; access_control: string; status: string; tools?: RoomToolRow[]; scan_code?: string | null }
+interface ZoneRow  { id: number; title: string; status: string; zone_daily_quota: number | null; time_weekday: number; time_weekend: number; min_capacity: number; rooms: RoomRow[]; tools?: ZoneToolRow[]; scan_prefix?: string | null }
 interface LocRow   { id: number; title: string; title_eng: string; status: string; zones: ZoneRow[] }
 interface TimeOpt  { id: number; title: string; start: string; end: string; total: number }
 
 const locations  = ref<LocRow[]>([]);
 const times      = ref<TimeOpt[]>([]);
+const tools      = ref<ToolItem[]>([]);
 const loading    = ref(false);
-const activeTab  = ref<'status' | 'settings'>('status');
+const activeTab  = ref<'status' | 'settings' | 'tools' | 'qr'>('status');
 const activeLoc  = ref<number>(0);
 const toggling   = ref<string | null>(null);
 
@@ -79,6 +83,7 @@ async function fetchAll() {
         const res       = await axios.get('/admin/rooms');
         locations.value = res.data.locations;
         times.value     = res.data.times;
+        tools.value     = res.data.tools ?? [];
         if (locations.value.length) activeLoc.value = locations.value[0].id;
     } finally {
         loading.value = false;
@@ -158,6 +163,167 @@ async function saveSettings(zone: ZoneRow) {
 
 const timeLabel = (id: number) => times.value.find(t => t.id === id)?.title ?? `id:${id}`;
 
+// ══════════ อุปกรณ์ (tools) ══════════
+const toolById = (id: number) => tools.value.find(t => t.id === id);
+
+// -- คลังอุปกรณ์ CRUD --
+const toolForm      = ref<{ id: number; name: string; icon: string }>({ id: 0, name: '', icon: 'fa-wrench' });
+const editingToolId = ref<number | null>(null);   // 0 = เพิ่มใหม่, null = ไม่ได้แก้
+const savingTool    = ref(false);
+
+function startAddTool()  { editingToolId.value = 0;    toolForm.value = { id: 0, name: '', icon: 'fa-wrench' }; }
+function startEditTool(t: ToolItem) { editingToolId.value = t.id; toolForm.value = { ...t }; }
+function cancelTool()    { editingToolId.value = null; }
+
+async function saveTool() {
+    if (!toolForm.value.name.trim()) return;
+    savingTool.value = true;
+    try {
+        if (toolForm.value.id) {
+            const { data } = await axios.put(`/admin/tools/${toolForm.value.id}`, toolForm.value);
+            const i = tools.value.findIndex(x => x.id === data.id);
+            if (i >= 0) tools.value[i] = data;
+        } else {
+            const { data } = await axios.post('/admin/tools', toolForm.value);
+            tools.value.push(data);
+        }
+        tools.value.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+        editingToolId.value = null;
+    } catch (e: any) {
+        const errs = e.response?.data?.errors;
+        Swal.fire('เกิดข้อผิดพลาด', errs ? Object.values(errs).flat().join(' ') : (e.response?.data?.message ?? ''), 'error');
+    } finally {
+        savingTool.value = false;
+    }
+}
+
+async function deleteTool(t: ToolItem) {
+    const r = await Swal.fire({
+        title: `ลบ "${t.name}"?`, text: 'จะถูกลบออกจากทุก zone และทุกห้องด้วย',
+        icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626',
+        confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก', reverseButtons: true,
+    });
+    if (!r.isConfirmed) return;
+    await axios.delete(`/admin/tools/${t.id}`);
+    await fetchAll();
+}
+
+// -- effective tools = อุปกรณ์ที่ห้องกำหนดเอง (ไม่ inherit จาก zone) --
+function effectiveTools(_zone: ZoneRow, room: RoomRow) {
+    return (room.tools ?? [])
+        .map(o => ({ tool_id: o.tool_id, quantity: o.quantity }))
+        .filter(o => toolById(o.tool_id));
+}
+
+// -- ชุดอุปกรณ์มาตรฐานของ zone --
+const editingZoneTools = ref<number | null>(null);
+const zoneToolsForm    = ref<ZoneToolRow[]>([]);
+const savingZoneTools  = ref(false);
+
+function openZoneTools(zone: ZoneRow) {
+    editingZoneTools.value = zone.id;
+    zoneToolsForm.value = (zone.tools ?? []).map(t => ({ tool_id: t.tool_id, quantity: t.quantity }));
+}
+function addZoneToolRow() {
+    const used = new Set(zoneToolsForm.value.map(r => r.tool_id));
+    const next = tools.value.find(t => !used.has(t.id));
+    zoneToolsForm.value.push({ tool_id: next?.id ?? tools.value[0]?.id ?? 0, quantity: 1 });
+}
+async function saveZoneTools(zone: ZoneRow) {
+    savingZoneTools.value = true;
+    const payload = zoneToolsForm.value.filter(t => t.tool_id);
+    try {
+        await axios.put(`/admin/zones/${zone.id}/tools`, { tools: payload });
+        zone.tools = payload.map(t => ({ tool_id: t.tool_id, quantity: t.quantity }));
+        editingZoneTools.value = null;
+        Swal.fire({ title: 'บันทึกแล้ว', icon: 'success', timer: 1000, showConfirmButton: false });
+    } finally {
+        savingZoneTools.value = false;
+    }
+}
+
+// -- override อุปกรณ์เฉพาะห้อง --
+const editingRoomTools = ref<number | null>(null);
+const roomZoneRows     = ref<{ tool_id: number; has: boolean; quantity: number }[]>([]);
+const roomExtraRows    = ref<{ tool_id: number; quantity: number }[]>([]);
+const savingRoomTools  = ref(false);
+
+function openRoomTools(zone: ZoneRow, room: RoomRow) {
+    editingRoomTools.value = room.id;
+    const owned    = room.tools ?? [];
+    const zoneTools = zone.tools ?? [];
+    // อุปกรณ์ในคลังโซน — ติ๊กว่าห้องนี้มีตัวไหนบ้าง (เริ่มจากที่ห้องกำหนดไว้)
+    roomZoneRows.value = zoneTools.map(zt => {
+        const has = owned.find(o => o.tool_id === zt.tool_id);
+        return { tool_id: zt.tool_id, has: !!has, quantity: has?.quantity ?? zt.quantity };
+    });
+    // อุปกรณ์ที่ห้องมี แต่ไม่อยู่ในคลังโซน
+    roomExtraRows.value = owned
+        .filter(o => !zoneTools.some(zt => zt.tool_id === o.tool_id))
+        .map(o => ({ tool_id: o.tool_id, quantity: o.quantity }));
+}
+function addRoomExtraRow() {
+    roomExtraRows.value.push({ tool_id: tools.value[0]?.id ?? 0, quantity: 1 });
+}
+async function saveRoomTools(room: RoomRow) {
+    savingRoomTools.value = true;
+    const overrides: RoomToolRow[] = [];
+    for (const r of roomZoneRows.value) {
+        if (r.has) overrides.push({ tool_id: r.tool_id, mode: 'add', quantity: r.quantity });
+    }
+    for (const r of roomExtraRows.value) {
+        if (r.tool_id) overrides.push({ tool_id: r.tool_id, mode: 'add', quantity: r.quantity });
+    }
+    try {
+        await axios.put(`/admin/rooms/${room.id}/tools`, { overrides });
+        room.tools = overrides.map(o => ({ ...o }));
+        editingRoomTools.value = null;
+        Swal.fire({ title: 'บันทึกแล้ว', icon: 'success', timer: 1000, showConfirmButton: false });
+    } finally {
+        savingRoomTools.value = false;
+    }
+}
+
+// ══════════ QR / scan_code ══════════
+const qrBase = (window as any).APP_BASE ?? '';
+const savingPrefix = ref<number | null>(null);
+const editingCode  = ref<number | null>(null);
+const codeDraft    = ref('');
+const savingCode   = ref(false);
+
+async function saveZonePrefix(zone: ZoneRow) {
+    savingPrefix.value = zone.id;
+    try {
+        const { data } = await axios.put(`/admin/zones/${zone.id}/scan-prefix`, { scan_prefix: zone.scan_prefix ?? '' });
+        zone.scan_prefix = data.scan_prefix;
+        Swal.fire({ title: 'บันทึก prefix แล้ว', icon: 'success', timer: 900, showConfirmButton: false });
+    } catch (e: any) {
+        Swal.fire('เกิดข้อผิดพลาด', e.response?.data?.message ?? Object.values(e.response?.data?.errors ?? {}).flat().join(' '), 'error');
+    } finally { savingPrefix.value = null; }
+}
+
+function startEditCode(room: RoomRow, zone: ZoneRow) {
+    editingCode.value = room.id;
+    codeDraft.value = room.scan_code || (zone.scan_prefix ? `${zone.scan_prefix}-` : '');
+}
+
+function cancelEditCode() {
+    editingCode.value = null;
+    codeDraft.value = '';
+}
+
+async function saveRoomCode(room: RoomRow) {
+    savingCode.value = true;
+    try {
+        const { data } = await axios.put(`/admin/rooms/${room.id}/scan-code`, { scan_code: codeDraft.value.trim() });
+        room.scan_code = data.scan_code;
+        editingCode.value = null;
+        codeDraft.value = '';
+    } catch (e: any) {
+        Swal.fire('บันทึกไม่ได้', e.response?.data?.message ?? Object.values(e.response?.data?.errors ?? {}).flat().join(' '), 'error');
+    } finally { savingCode.value = false; }
+}
+
 onMounted(() => fetchAll());
 </script>
 
@@ -171,7 +337,7 @@ onMounted(() => fetchAll());
 
         <!-- Sub-tabs -->
         <div class="flex gap-2 border-b border-slate-200">
-            <button v-for="tab in [{ id: 'status', label: 'สถานะพื้นที่', icon: 'fa-toggle-on' }, { id: 'settings', label: 'ตั้งค่า Zone', icon: 'fa-sliders' }]"
+            <button v-for="tab in [{ id: 'status', label: 'สถานะพื้นที่', icon: 'fa-toggle-on' }, { id: 'settings', label: 'ตั้งค่า Zone', icon: 'fa-sliders' }, { id: 'tools', label: 'อุปกรณ์', icon: 'fa-toolbox' }, { id: 'qr', label: 'QR', icon: 'fa-qrcode' }]"
                 :key="tab.id"
                 @click="activeTab = tab.id as any"
                 :class="activeTab === tab.id
@@ -406,6 +572,229 @@ onMounted(() => fetchAll());
                             </button>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- ── TAB 3: อุปกรณ์ ── -->
+            <div v-if="activeTab === 'tools' && currentLoc" class="space-y-4">
+
+                <!-- คลังอุปกรณ์ -->
+                <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50/60">
+                        <span class="text-sm font-bold text-slate-900"><i class="fa-solid fa-boxes-stacked text-slate-400 mr-1.5"></i>คลังอุปกรณ์ (ใช้ร่วมทุกโซน)</span>
+                        <button v-if="editingToolId === null" @click="startAddTool"
+                            class="text-[10px] font-bold text-blue-700 hover:underline flex items-center gap-1">
+                            <i class="fa-solid fa-plus text-[9px]"></i> เพิ่มอุปกรณ์
+                        </button>
+                    </div>
+                    <div class="p-4">
+                        <div v-if="editingToolId !== null" class="flex flex-wrap items-end gap-2 mb-3 p-3 bg-slate-50 rounded-lg">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">ชื่อ</label>
+                                <input v-model="toolForm.name" type="text"
+                                    class="text-xs px-2.5 py-2 border border-slate-300 rounded-lg w-40 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">ไอคอน (Font Awesome)</label>
+                                <div class="flex items-center gap-1.5">
+                                    <input v-model="toolForm.icon" type="text" placeholder="fa-tv"
+                                        class="text-xs px-2.5 py-2 border border-slate-300 rounded-lg w-32 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                                    <i :class="`fa-solid ${toolForm.icon || 'fa-wrench'} text-slate-500`"></i>
+                                </div>
+                            </div>
+                            <button @click="saveTool" :disabled="savingTool || !toolForm.name.trim()"
+                                class="text-xs px-3 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 font-bold disabled:opacity-50 flex items-center gap-1.5">
+                                <i v-if="savingTool" class="fa-solid fa-spinner fa-spin"></i>{{ toolForm.id ? 'บันทึก' : 'เพิ่ม' }}
+                            </button>
+                            <button @click="cancelTool" class="text-xs px-3 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold">ยกเลิก</button>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5">
+                            <span v-for="t in tools" :key="t.id"
+                                class="inline-flex items-center gap-1.5 text-[11px] bg-slate-100 border border-slate-200 text-slate-700 pl-2 pr-1 py-1 rounded-full">
+                                <i :class="`fa-solid ${t.icon}`" class="text-[10px] text-slate-500"></i>{{ t.name }}
+                                <button @click="startEditTool(t)" class="w-4 h-4 grid place-content-center rounded-full hover:bg-slate-200 text-slate-400 hover:text-blue-600"><i class="fa-solid fa-pen text-[8px]"></i></button>
+                                <button @click="deleteTool(t)" class="w-4 h-4 grid place-content-center rounded-full hover:bg-red-100 text-slate-400 hover:text-red-600"><i class="fa-solid fa-xmark text-[9px]"></i></button>
+                            </span>
+                            <span v-if="!tools.length" class="text-xs text-slate-400">ยังไม่มีอุปกรณ์ในคลัง</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- อุปกรณ์แต่ละ zone (กด header เพื่อ show/hide) -->
+                <div v-for="zone in currentLoc.zones" :key="zone.id"
+                    class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div @click="toggleExpand(zone.id)"
+                        class="flex items-center gap-2 px-5 py-3.5 bg-slate-50/60 cursor-pointer hover:bg-slate-100/60 transition-colors select-none"
+                        :class="{ 'border-b border-slate-100': expandedZones.has(zone.id) }">
+                        <i :class="expandedZones.has(zone.id) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'"
+                            class="text-[10px] text-slate-400 w-3"></i>
+                        <span class="text-sm font-bold text-slate-900">{{ zone.title }}</span>
+                        <span class="text-[10px] text-slate-400">
+                            ({{ (zone.tools ?? []).length }} อุปกรณ์ในคลัง · {{ zone.rooms.length }} ห้อง)
+                        </span>
+                    </div>
+
+                    <template v-if="expandedZones.has(zone.id)">
+                    <!-- คลังอุปกรณ์ภายในโซน -->
+                    <div class="px-5 py-3.5 border-b border-slate-100">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[11px] font-bold text-slate-500">ชุดอุปกรณ์ภายในโซน <span class="font-normal text-slate-400">(คลังให้แต่ละห้องเลือกติ๊ก)</span></span>
+                            <button v-if="editingZoneTools !== zone.id" @click="openZoneTools(zone)"
+                                class="text-[10px] font-bold text-blue-700 hover:underline"><i class="fa-solid fa-pen text-[9px] mr-1"></i>แก้ไข</button>
+                        </div>
+                        <div v-if="editingZoneTools !== zone.id" class="flex flex-wrap gap-1.5">
+                            <span v-for="zt in (zone.tools ?? [])" :key="zt.tool_id"
+                                class="text-[11px] bg-slate-100 border border-slate-200 text-slate-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <i :class="`fa-solid ${toolById(zt.tool_id)?.icon}`" class="text-[10px] text-slate-500"></i>
+                                {{ toolById(zt.tool_id)?.name }}<template v-if="zt.quantity > 1"> ×{{ zt.quantity }}</template>
+                            </span>
+                            <span v-if="!(zone.tools ?? []).length" class="text-xs text-slate-400">— ไม่มี —</span>
+                        </div>
+                        <div v-else class="space-y-2">
+                            <div v-for="(row, i) in zoneToolsForm" :key="i" class="flex items-center gap-2">
+                                <select v-model.number="row.tool_id" class="text-xs px-2 py-1.5 border border-slate-300 rounded-lg flex-1">
+                                    <option v-for="t in tools" :key="t.id" :value="t.id">{{ t.name }}</option>
+                                </select>
+                                <input v-model.number="row.quantity" type="number" min="1" max="99" class="text-xs px-2 py-1.5 border border-slate-300 rounded-lg w-16" />
+                                <button @click="zoneToolsForm.splice(i, 1)" class="text-slate-400 hover:text-red-600"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <button @click="addZoneToolRow" class="text-[11px] font-bold text-blue-700 hover:underline"><i class="fa-solid fa-plus text-[9px] mr-1"></i>เพิ่มอุปกรณ์</button>
+                            <div class="flex justify-end gap-2 pt-1">
+                                <button @click="editingZoneTools = null" class="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-bold">ยกเลิก</button>
+                                <button @click="saveZoneTools(zone)" :disabled="savingZoneTools"
+                                    class="text-xs px-4 py-1.5 rounded-lg bg-blue-900 text-white font-bold disabled:opacity-60 flex items-center gap-1.5">
+                                    <i v-if="savingZoneTools" class="fa-solid fa-spinner fa-spin"></i>บันทึก
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ต่อห้อง -->
+                    <div class="divide-y divide-slate-50">
+                        <div v-for="room in zone.rooms" :key="room.id" class="px-5 py-3">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <div class="text-xs font-bold text-slate-800">{{ room.title }}</div>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <span v-for="et in effectiveTools(zone, room)" :key="et.tool_id"
+                                            class="text-[10px] border bg-slate-100 border-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                            <i :class="`fa-solid ${toolById(et.tool_id)?.icon} text-[9px]`"></i>
+                                            {{ toolById(et.tool_id)?.name }}<template v-if="et.quantity > 1"> ×{{ et.quantity }}</template>
+                                        </span>
+                                        <span v-if="!effectiveTools(zone, room).length" class="text-[10px] text-slate-400">ยังไม่ได้กำหนด</span>
+                                    </div>
+                                </div>
+                                <button v-if="editingRoomTools !== room.id" @click="openRoomTools(zone, room)"
+                                    class="text-[10px] font-bold text-blue-700 hover:underline shrink-0"><i class="fa-solid fa-pen text-[9px] mr-1"></i>แก้ไข</button>
+                            </div>
+
+                            <div v-if="editingRoomTools === room.id" class="mt-2.5 p-3 bg-slate-50 rounded-lg space-y-2.5">
+                                <div>
+                                    <div class="text-[10px] font-bold text-slate-500 mb-1">ติ๊กอุปกรณ์ที่ห้องนี้มี (เลือกจากคลังโซน) — ปรับจำนวนได้</div>
+                                    <div v-for="row in roomZoneRows" :key="row.tool_id" class="flex items-center gap-2 py-0.5">
+                                        <label class="flex items-center gap-1.5 flex-1 text-xs text-slate-700 cursor-pointer">
+                                            <input type="checkbox" v-model="row.has" class="rounded border-slate-300 text-blue-600" />
+                                            <i :class="`fa-solid ${toolById(row.tool_id)?.icon} text-[10px] text-slate-400`"></i>{{ toolById(row.tool_id)?.name }}
+                                        </label>
+                                        <input v-model.number="row.quantity" :disabled="!row.has" type="number" min="1" max="99"
+                                            class="text-xs px-2 py-1 border border-slate-300 rounded-lg w-14 disabled:bg-slate-100 disabled:text-slate-400" />
+                                    </div>
+                                    <div v-if="!roomZoneRows.length" class="text-[10px] text-slate-400">โซนนี้ยังไม่มีอุปกรณ์ในคลัง — เพิ่มด้านบนก่อน</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] font-bold text-slate-500 mb-1">เพิ่มเฉพาะห้องนี้</div>
+                                    <div v-for="(row, i) in roomExtraRows" :key="i" class="flex items-center gap-2 py-0.5">
+                                        <select v-model.number="row.tool_id" class="text-xs px-2 py-1 border border-slate-300 rounded-lg flex-1">
+                                            <option v-for="t in tools" :key="t.id" :value="t.id">{{ t.name }}</option>
+                                        </select>
+                                        <input v-model.number="row.quantity" type="number" min="1" max="99" class="text-xs px-2 py-1 border border-slate-300 rounded-lg w-14" />
+                                        <button @click="roomExtraRows.splice(i, 1)" class="text-slate-400 hover:text-red-600"><i class="fa-solid fa-xmark"></i></button>
+                                    </div>
+                                    <button @click="addRoomExtraRow" class="text-[11px] font-bold text-blue-700 hover:underline"><i class="fa-solid fa-plus text-[9px] mr-1"></i>เพิ่ม</button>
+                                </div>
+                                <div class="flex justify-end gap-2">
+                                    <button @click="editingRoomTools = null" class="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-bold">ยกเลิก</button>
+                                    <button @click="saveRoomTools(room)" :disabled="savingRoomTools"
+                                        class="text-xs px-4 py-1.5 rounded-lg bg-blue-900 text-white font-bold disabled:opacity-60 flex items-center gap-1.5">
+                                        <i v-if="savingRoomTools" class="fa-solid fa-spinner fa-spin"></i>บันทึก
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- ── TAB 4: QR ── -->
+            <div v-if="activeTab === 'qr' && currentLoc" class="space-y-4">
+                <p class="text-xs text-slate-500">
+                    ตั้ง <b>prefix</b> ของโซน (ใช้เป็นค่าตั้งต้นตอนกรอก) → <b>กรอก <code>scan_code</code> ของแต่ละห้องเอง</b> → <b>พิมพ์ QR</b> ไปติดที่ตัวเก้าอี้/จุด
+                    <br>QR ปลายทาง: <code>{{ qrBase }}/s/&lt;scan_code&gt;</code> — สแกนแล้วจอง + เช็คอินให้เลย
+                </p>
+
+                <div v-for="zone in currentLoc.zones" :key="zone.id"
+                    class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div @click="toggleExpand(zone.id)"
+                        class="flex items-center gap-2 px-5 py-3.5 bg-slate-50/60 cursor-pointer hover:bg-slate-100/60 select-none"
+                        :class="{ 'border-b border-slate-100': expandedZones.has(zone.id) }">
+                        <i :class="expandedZones.has(zone.id) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'"
+                            class="text-[10px] text-slate-400 w-3"></i>
+                        <span class="text-sm font-bold text-slate-900">{{ zone.title }}</span>
+                        <span class="text-[10px] text-slate-400">
+                            ({{ zone.rooms.filter(r => r.scan_code).length }}/{{ zone.rooms.length }} มีโค้ด)
+                        </span>
+                    </div>
+
+                    <template v-if="expandedZones.has(zone.id)">
+                        <!-- prefix + actions -->
+                        <div class="px-5 py-3.5 border-b border-slate-100 flex flex-wrap items-end gap-2">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">Prefix ของโซน</label>
+                                <input v-model="zone.scan_prefix" type="text" placeholder="เช่น 3F-CH"
+                                    class="text-xs px-2.5 py-2 border border-slate-300 rounded-lg w-32 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                            </div>
+                            <button @click="saveZonePrefix(zone)" :disabled="savingPrefix === zone.id"
+                                class="text-xs px-3 py-2 rounded-lg bg-blue-900 text-white font-bold disabled:opacity-60 flex items-center gap-1.5">
+                                <i v-if="savingPrefix === zone.id" class="fa-solid fa-spinner fa-spin"></i>บันทึก
+                            </button>
+                            <a :href="`${qrBase}/admin/zones/${zone.id}/qr-sheet`" target="_blank" rel="noopener"
+                                class="text-xs px-3 py-2 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 font-bold">
+                                <i class="fa-solid fa-print mr-1"></i>พิมพ์ QR ทั้งโซน
+                            </a>
+                        </div>
+
+                        <!-- rooms -->
+                        <div class="divide-y divide-slate-50">
+                            <div v-for="room in zone.rooms" :key="room.id"
+                                class="px-5 py-2.5 flex items-center justify-between gap-2">
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-xs font-bold text-slate-800">{{ room.title }}</div>
+
+                                    <div v-if="editingCode === room.id" class="mt-1 flex items-center gap-1.5">
+                                        <input v-model="codeDraft" type="text" placeholder="เช่น 3F-CH-001"
+                                            @keyup.enter="saveRoomCode(room)" @keyup.esc="cancelEditCode()"
+                                            class="text-[11px] font-mono px-2 py-1 border border-slate-300 rounded-lg w-40 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                                        <button @click="saveRoomCode(room)" :disabled="savingCode"
+                                            class="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-900 text-white disabled:opacity-60">
+                                            <i v-if="savingCode" class="fa-solid fa-spinner fa-spin"></i><span v-else>บันทึก</span>
+                                        </button>
+                                        <button @click="cancelEditCode()" class="text-[10px] px-1.5 py-1 text-slate-400 hover:text-slate-600">
+                                            <i class="fa-solid fa-xmark"></i>
+                                        </button>
+                                        <span class="text-[10px] text-slate-400">เว้นว่าง = ลบโค้ด</span>
+                                    </div>
+                                    <div v-else class="text-[11px] font-mono mt-0.5" :class="room.scan_code ? 'text-slate-600' : 'text-slate-300'">
+                                        {{ room.scan_code || '— ยังไม่มีโค้ด —' }}
+                                    </div>
+                                </div>
+                                <button v-if="editingCode !== room.id" @click="startEditCode(room, zone)"
+                                    class="shrink-0 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">
+                                    <i class="fa-solid fa-pen mr-1"></i>{{ room.scan_code ? 'แก้ไข' : 'สร้าง' }}
+                                </button>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
         </template>

@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', [LocationController::class, 'index'])->name('welcome');
+Route::get('/welcome-test', [LocationController::class, 'indexTest'])->name('welcome.test'); // หน้าทดลอง layout/โทนสีใหม่ — ลบทิ้งได้เมื่อสรุปผลแล้ว
 
 // TEMP: หน้าเทียบ badge A vs B — ลบทั้งบรรทัดนี้ + resources/js/Pages/Test.vue เมื่อเลือกเสร็จ
 //Route::get('/badge-preview', fn() => Inertia::render('Test'))->name('badge.preview');
@@ -42,11 +43,14 @@ Route::middleware('auth:admin')->group(function () {
     Route::get('/admin/overview-stats',   [AdminOverviewController::class, 'stats']);
     Route::get('/admin/overview-service', [AdminOverviewController::class, 'serviceStats']);
     Route::get('/admin/overview-most',    [AdminOverviewController::class, 'mostStats']);
-    Route::get('/admin/bookings',         [AdminBookingController::class, 'index']);
+    Route::get('/admin/bookings',              [AdminBookingController::class, 'index']);
+    Route::get('/admin/bookings/room-day',     [AdminBookingController::class, 'roomDay']);
+    Route::get('/admin/bookings/board-summary', [AdminBookingController::class, 'boardSummary']);
     Route::post('/admin/bookings/staff',   [AdminBookingController::class, 'staffStore']);
     Route::post('/admin/bookings/approve', [AdminBookingController::class, 'approveSession']);
     Route::post('/admin/bookings/reject',  [AdminBookingController::class, 'rejectSession']);
     Route::post('/admin/bookings/checkin', [AdminBookingController::class, 'checkinSession']);
+    Route::post('/admin/bookings/cancel',  [AdminBookingController::class, 'cancelSession']);
 
     Route::get('/admin/holidays',              [AdminHolidayController::class, 'index']);
     Route::post('/admin/holidays',             [AdminHolidayController::class, 'store']);
@@ -66,6 +70,15 @@ Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/rooms/{room}/toggle',               [AdminRoomController::class, 'toggleRoom']);
     Route::post('/admin/rooms/{room}/toggle-access',        [AdminRoomController::class, 'toggleRoomAccessControl']);
     Route::put('/admin/zones/{zone}/settings',              [AdminRoomController::class, 'updateZoneSettings']);
+    Route::put('/admin/zones/{zone}/tools',                 [AdminRoomController::class, 'updateZoneTools']);
+    Route::put('/admin/rooms/{room}/tools',                 [AdminRoomController::class, 'updateRoomTools']);
+    Route::post('/admin/tools',                             [AdminRoomController::class, 'toolStore']);
+    Route::put('/admin/tools/{tool}',                       [AdminRoomController::class, 'toolUpdate']);
+    Route::delete('/admin/tools/{tool}',                    [AdminRoomController::class, 'toolDestroy']);
+    Route::put('/admin/zones/{zone}/scan-prefix',           [AdminRoomController::class, 'updateZonePrefix']);
+    Route::post('/admin/rooms/{room}/scan-code',            [AdminRoomController::class, 'generateRoomScanCode']);
+    Route::put('/admin/rooms/{room}/scan-code',             [AdminRoomController::class, 'updateRoomScanCode']);
+    Route::get('/admin/zones/{zone}/qr-sheet',              [AdminRoomController::class, 'qrSheet'])->name('admin.qr-sheet');
 });
 
 // Dev only — simulate member/admin login (ลบออกก่อน deploy จริง)
@@ -94,6 +107,10 @@ if (app()->environment('local')) {
         return redirect()->route('admin.dashboard');
     })->name('dev.login-admin');
 }
+
+// สแกน QR ที่ตัว unit → จอง + เช็คอิน (auth เช็คภายใน controller)
+Route::get('/s/{code}',       [\App\Http\Controllers\ScanBookController::class, 'show'])->name('scan.show');
+Route::post('/s/{code}/book', [\App\Http\Controllers\ScanBookController::class, 'book'])->middleware('auth')->name('scan.book');
 
 Route::get('/rooms/{room}/slots', [BookingController::class, 'slots'])->name('booking.slots');
 Route::post('/bookings', [BookingController::class, 'store'])->middleware('auth')->name('booking.store');

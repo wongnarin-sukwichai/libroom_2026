@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from "vue";
 import axios from "axios";
 import Swal from "sweetalert2";
+import BookingBoard from "./BookingBoard.vue";
 
 interface BookingRow {
     ids: number[];
@@ -50,6 +51,8 @@ const tabs = [
 ];
 type TabKey = "pending" | "upcoming" | "confirmed" | "cancelled";
 const activeTab = ref<TabKey>("pending");
+
+const viewMode = ref<"list" | "board">("list");
 
 const todayStr = () => new Date().toISOString().split("T")[0];
 
@@ -228,6 +231,74 @@ onMounted(() => fetch());
 
 <template>
     <div class="space-y-4">
+        <!-- Top bar: filters (list only) + view toggle (right) -->
+        <div class="flex flex-wrap items-center gap-3">
+            <template v-if="viewMode === 'list'">
+                <div class="relative flex-1 min-w-[200px] max-w-xs">
+                    <i
+                        class="absolute text-xs -translate-y-1/2 fa-solid fa-magnifying-glass left-3 top-1/2 text-slate-400"
+                    ></i>
+                    <input
+                        v-model="search"
+                        @input="onSearchInput"
+                        type="text"
+                        placeholder="ค้นหา ชื่อ / อีเมล / ห้อง"
+                        class="w-full py-2 pl-8 pr-3 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    />
+                </div>
+                <div class="relative">
+                    <input
+                        :value="filterDate ? fmtDate(filterDate) : ''"
+                        readonly
+                        placeholder="ทุกวัน"
+                        class="px-3 py-2 text-xs bg-white border cursor-pointer border-slate-200 rounded-xl text-slate-700 w-28 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        @click="($refs.hiddenDate as HTMLInputElement).showPicker()"
+                    />
+                    <input
+                        ref="hiddenDate"
+                        v-model="filterDate"
+                        @change="fetch(1)"
+                        type="date"
+                        class="absolute inset-0 opacity-0 pointer-events-none"
+                    />
+                </div>
+                <button
+                    @click="resetFilters"
+                    class="px-3 py-2 text-xs transition-colors bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50"
+                >
+                    <i class="mr-1 fa-solid fa-rotate-right"></i>รีเซ็ต
+                </button>
+            </template>
+
+            <div class="flex items-center gap-3 ml-auto">
+                <span
+                    v-if="viewMode === 'list' && paginated.pending_count > 0"
+                    class="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-xl font-bold"
+                >
+                    {{ paginated.pending_count }} รายการรอดำเนินการ
+                </span>
+                <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
+                    <button
+                        @click="viewMode = 'list'"
+                        :class="viewMode === 'list' ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+                        class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5"
+                    >
+                        <i class="fa-solid fa-list-ul"></i> รายการ
+                    </button>
+                    <button
+                        @click="viewMode = 'board'"
+                        :class="viewMode === 'board' ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+                        class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5"
+                    >
+                        <i class="fa-solid fa-table-cells-large"></i> ผังห้อง
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <BookingBoard v-if="viewMode === 'board'" />
+
+        <template v-else>
         <!-- Tabs -->
         <div
             class="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit"
@@ -252,50 +323,6 @@ onMounted(() => fetch());
                     {{ paginated.pending_count }}
                 </span>
             </button>
-        </div>
-
-        <!-- Filter bar -->
-        <div class="flex flex-wrap items-center gap-3">
-            <div class="relative flex-1 min-w-[200px] max-w-xs">
-                <i
-                    class="absolute text-xs -translate-y-1/2 fa-solid fa-magnifying-glass left-3 top-1/2 text-slate-400"
-                ></i>
-                <input
-                    v-model="search"
-                    @input="onSearchInput"
-                    type="text"
-                    placeholder="ค้นหา ชื่อ / อีเมล / ห้อง"
-                    class="w-full py-2 pl-8 pr-3 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                />
-            </div>
-            <div class="relative">
-                <input
-                    :value="filterDate ? fmtDate(filterDate) : ''"
-                    readonly
-                    placeholder="ทุกวัน"
-                    class="px-3 py-2 text-xs bg-white border cursor-pointer border-slate-200 rounded-xl text-slate-700 w-28 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    @click="($refs.hiddenDate as HTMLInputElement).showPicker()"
-                />
-                <input
-                    ref="hiddenDate"
-                    v-model="filterDate"
-                    @change="fetch(1)"
-                    type="date"
-                    class="absolute inset-0 opacity-0 pointer-events-none"
-                />
-            </div>
-            <button
-                @click="resetFilters"
-                class="px-3 py-2 text-xs transition-colors bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50"
-            >
-                <i class="mr-1 fa-solid fa-rotate-right"></i>รีเซ็ต
-            </button>
-            <span
-                v-if="paginated.pending_count > 0"
-                class="ml-auto text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-xl font-bold"
-            >
-                {{ paginated.pending_count }} รายการรอดำเนินการ
-            </span>
         </div>
 
         <!-- Table -->
@@ -514,5 +541,6 @@ onMounted(() => fetch());
                 </div>
             </div>
         </div>
+        </template>
     </div>
 </template>
