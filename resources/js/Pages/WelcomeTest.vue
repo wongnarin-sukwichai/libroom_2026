@@ -1,6 +1,6 @@
 <script setup>
 import { usePage, router } from "@inertiajs/vue3";
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 
 const props = defineProps({
     locations:      Array,
@@ -272,10 +272,16 @@ const changeLanguage = (lang) => {
 };
 
 // --- 2. การควบคุมแท็บเลือกพื้นที่ ---
-const activeArea = ref(1);
+// เริ่มต้นเลือก location แรกอัตโนมัติ (ไม่ scroll ตอนเปิดหน้าครั้งแรก) — null = หุบทั้งหมด
+const activeArea  = ref(1);
+const zonePanelEl = ref(null);
 
-const switchArea = (areaId) => {
-    activeArea.value = areaId;
+const switchArea = async (areaId) => {
+    activeArea.value = activeArea.value === areaId ? null : areaId;
+    if (activeArea.value !== null) {
+        await nextTick();
+        zonePanelEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 };
 
 // --- 3. ระบบควบคุมการเปิด/ปิด Modals ---
@@ -632,15 +638,8 @@ const hideToast = () => {
                 class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 mx-auto max-w-7xl"
             >
                 <!-- โลโก้ -->
-                <div class="flex items-center gap-2">
-                    <div class="leading-none">
-                        <span class="text-lg font-extrabold tracking-tight text-amber-400 font-prompt">
-                            MSU <span class="font-bold text-slate-900">LIBRARY</span>
-                        </span>
-                        <div class="text-[10px] font-bold tracking-wide text-slate-900">
-                            Academic Resource Center
-                        </div>
-                    </div>
+                <div class="flex items-center">
+                    <img src="/imgs/logo.png" alt="MSU Library — Academic Resource Center" class="w-auto h-9" />
                 </div>
 
                 <!-- เมนูหลัก -->
@@ -769,7 +768,11 @@ const hideToast = () => {
                     <button
                         v-for="(loc, i) in locations" :key="loc.id"
                         @click="switchArea(i + 1)"
-                        class="relative overflow-hidden text-left transition-all bg-white border-2 border-transparent shadow-sm group rounded-2xl hover:border-amber-400 hover:shadow-lg"
+                        class="relative overflow-hidden text-left transition-all duration-300 bg-white border-2 shadow-sm group rounded-2xl hover:shadow-lg"
+                        :class="[
+                            activeArea === i + 1 ? 'border-amber-400' : 'border-transparent hover:border-amber-400',
+                            activeArea !== null && activeArea !== i + 1 ? 'opacity-100 grayscale' : '',
+                        ]"
                     >
                         <div class="h-40 overflow-hidden bg-slate-100">
                             <img :src="`/imgs/locations/${i + 1}.jpg`" :alt="locTitle(loc)"
@@ -781,10 +784,64 @@ const hideToast = () => {
                                 <p class="mt-1 text-xs text-slate-500 line-clamp-2">{{ loc.detail }}</p>
                             </div>
                             <span class="flex items-center justify-center w-8 h-8 text-sm transition-colors rounded-full shrink-0 bg-amber-400 text-slate-900 group-hover:bg-amber-500">
-                                <i class="fa-solid fa-arrow-right"></i>
+                                <i class="fa-solid" :class="activeArea === i + 1 ? 'fa-chevron-up' : 'fa-arrow-right'"></i>
                             </span>
                         </div>
                     </button>
+                </div>
+
+                <!-- ═══ โซนของ location ที่เลือก (ขยายแทรกในหน้า ไม่ใช่ modal ไม่ล้างส่วนอื่น) ═══ -->
+                <!-- ref อยู่ที่ wrapper คงที่ (ไม่ถูกถอด/สร้างใหม่ตาม :key) กัน scrollIntoView ชี้ element ที่ยังไม่ mount ตอน mode=out-in -->
+                <div ref="zonePanelEl" class="scroll-mt-24">
+                <Transition name="fade" mode="out-in">
+                    <div v-if="currentLocation" :key="activeArea" class="mt-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-base font-bold text-slate-900 font-prompt">
+                                พื้นที่บริการใน{{ locTitle(currentLocation) }}
+                            </h3>
+                            <button @click="activeArea = null" class="text-xs font-bold transition-colors text-slate-400 hover:text-slate-600">
+                                <i class="mr-1 fa-solid fa-xmark"></i>ปิด
+                            </button>
+                        </div>
+
+                        <div v-if="currentLocation.status !== '0'"
+                            class="flex items-center gap-3 p-4 border border-red-200 bg-red-50 rounded-2xl">
+                            <i class="text-xl text-red-500 fa-solid fa-circle-xmark"></i>
+                            <div class="text-sm font-bold text-red-700">พื้นที่นี้ไม่พร้อมให้บริการในขณะนี้</div>
+                        </div>
+
+                        <div v-else class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                            <button
+                                v-for="zone in currentZones" :key="zone.id"
+                                @click="zone.status === '0' && initiateBooking(zone)"
+                                :disabled="zone.status !== '0'"
+                                class="relative h-52 overflow-hidden text-left transition-all bg-slate-900 shadow-sm group rounded-2xl disabled:cursor-not-allowed"
+                            >
+                                <img v-if="zone.pic" :src="`/imgs/zones/${zone.pic}`" :alt="zoneTitle(zone)"
+                                    class="absolute inset-0 object-cover w-full h-full transition-transform duration-300 group-hover:scale-105"
+                                    :class="zone.status !== '0' ? 'grayscale opacity-40' : 'opacity-90'" />
+                                <div v-else class="absolute inset-0 flex items-center justify-center bg-slate-800">
+                                    <i class="text-4xl text-slate-500 fa-solid fa-image"></i>
+                                </div>
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent"></div>
+
+                                <div class="absolute inset-x-0 bottom-0 p-4 text-white">
+                                    <h3 class="text-base font-extrabold font-prompt">{{ zoneTitle(zone) }}</h3>
+                                    <p class="mt-0.5 text-[11px] text-slate-200 line-clamp-1">{{ zoneDetail(zone) || 'พื้นที่ให้บริการ' }}</p>
+                                </div>
+
+                                <span v-if="zone.status !== '0'"
+                                    class="absolute px-2 py-1 text-[10px] font-bold text-white bg-red-600 rounded-full top-3 left-3">
+                                    ปิดให้บริการ
+                                </span>
+                                <span v-else
+                                    class="absolute flex items-center justify-center text-sm font-bold text-slate-900 transition-colors rounded-full bottom-4 right-4 w-9 h-9 bg-amber-400 group-hover:bg-amber-300">
+                                    <i class="fa-solid fa-arrow-right"></i>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                </Transition>
                 </div>
             </section>
 
@@ -922,10 +979,8 @@ const hideToast = () => {
             <div class="px-4 py-10 mx-auto max-w-[1600px]">
                 <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-4">
                     <!-- คอลัมน์ที่ 1: โลโก้ -->
-                    <div class="flex items-start gap-3">
-                        <div class="flex items-center justify-center w-12 h-12 bg-black border-2 border-white rounded-full shrink-0">
-                            <i class="text-lg text-white fa-solid fa-landmark"></i>
-                        </div>
+                    <div class="flex items-start gap-3 border-r-2 border-slate-800">
+                        <img src="/imgs/footer.png" alt="MSU Library" class="w-auto h-12 shrink-0" />
                         <div class="leading-snug">
                             <div class="text-sm font-extrabold tracking-tight font-prompt">MSU LIBRARY</div>
                             <div class="text-xs text-slate-400">Academic Resource Center</div>
@@ -934,7 +989,7 @@ const hideToast = () => {
                     </div>
 
                     <!-- คอลัมน์ที่ 2: แท็กไลน์ -->
-                    <div>
+                    <div class="border-r-2 border-slate-800">
                         <p class="leading-snug text-md font-prompt">
                             พื้นที่แห่งการเรียนรู้<br />เพื่ออนาคตที่มากกว่า
                         </p>
@@ -943,7 +998,7 @@ const hideToast = () => {
                     </div>
 
                     <!-- คอลัมน์ที่ 3: ติดต่อเรา -->
-                    <div>
+                    <div class="border-r-2 border-slate-800">
                         <h5 class="mb-3 text-sm font-bold tracking-wider uppercase text-slate-300 font-prompt">
                             ติดต่อเรา
                         </h5>
@@ -970,7 +1025,7 @@ const hideToast = () => {
                                 ติดตามเรา
                             </h5>
                             <div class="flex items-center gap-2.5">
-                                <a href="#" aria-label="Facebook"
+                                <a href="https://www.facebook.com/librarymsu" aria-label="Facebook"
                                     class="flex items-center justify-center transition-colors bg-white rounded-full w-9 h-9 hover:bg-amber-400 text-slate-900">
                                     <i class="fa-brands fa-facebook-f"></i>
                                 </a>

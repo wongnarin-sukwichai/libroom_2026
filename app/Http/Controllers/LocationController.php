@@ -13,31 +13,27 @@ use Illuminate\Http\Request;
 class LocationController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Display a listing of the resource. (โฉมใหม่ — เดิมทดลองที่ /welcome-test แล้วโปรโมทมาแทนหน้าแรกจริง)
      */
     public function index()
     {
-        $today          = Carbon::now();
-        $todayIsHoliday = Holiday::where('d', (string)$today->day)
-            ->where('m', (string)$today->month)
-            ->exists();
-
-        return inertia('Welcome', [
-            'locations'      => $this->loadLocationsTree(),
-            'todayIsHoliday' => $todayIsHoliday,
-            'todayDate'      => $today->format('Y-m-d'),
-        ]);
+        return $this->renderHome('Welcome');
     }
 
-    /** หน้าทดลอง (ทดสอบ layout/โทนสีใหม่) — ใช้ข้อมูลจริงชุดเดียวกับหน้าแรก + ตารางจองวันนี้แบบย่อ */
+    /** หน้าทดลอง — ตอนนี้เนื้อหาเหมือนหน้าแรกทุกอย่าง เก็บ route ไว้เผื่อเทียบ/ทดลองเวอร์ชันถัดไป */
     public function indexTest()
+    {
+        return $this->renderHome('WelcomeTest');
+    }
+
+    private function renderHome(string $component)
     {
         $today          = Carbon::now('Asia/Bangkok');
         $todayIsHoliday = Holiday::where('d', (string)$today->day)
             ->where('m', (string)$today->month)
             ->exists();
 
-        return inertia('WelcomeTest', [
+        return inertia($component, [
             'locations'      => $this->loadLocationsTree(),
             'todayIsHoliday' => $todayIsHoliday,
             'todayDate'      => $today->format('Y-m-d'),
