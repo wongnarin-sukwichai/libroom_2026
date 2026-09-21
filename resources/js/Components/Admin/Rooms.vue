@@ -7,7 +7,15 @@ interface ToolItem { id: number; name: string; icon: string }
 interface ZoneToolRow { tool_id: number; quantity: number }
 interface RoomToolRow { tool_id: number; mode: 'add' | 'remove'; quantity: number }
 interface RoomRow  { id: number; title: string; confirm_type: string; access_control: string; status: string; tools?: RoomToolRow[]; scan_code?: string | null }
-interface ZoneRow  { id: number; title: string; status: string; zone_daily_quota: number | null; time_weekday: number; time_weekend: number; min_capacity: number; rooms: RoomRow[]; tools?: ZoneToolRow[]; scan_prefix?: string | null }
+interface ZoneRow  { id: number; title: string; status: string; zone_daily_quota: number | null; time_weekday: number; time_weekend: number; min_capacity: number; rooms: RoomRow[]; tools?: ZoneToolRow[]; scan_prefix?: string | null; icon?: string | null }
+
+// ไอคอนให้เจ้าหน้าที่เลือกแทนโซน (แสดงที่หน้าแรก)
+const ZONE_ICONS = [
+    'fa-users', 'fa-tv', 'fa-desktop', 'fa-gamepad', 'fa-microphone',
+    'fa-book-open', 'fa-couch', 'fa-bed', 'fa-chalkboard-user', 'fa-video',
+    'fa-headphones', 'fa-door-open', 'fa-mug-hot', 'fa-graduation-cap',
+    'fa-building', 'fa-wifi', 'fa-print', 'fa-star',
+];
 interface LocRow   { id: number; title: string; title_eng: string; status: string; zones: ZoneRow[] }
 interface TimeOpt  { id: number; title: string; start: string; end: string; total: number }
 
@@ -30,7 +38,7 @@ function toggleExpand(zoneId: number) {
 
 // settings form per zone
 const editingZone    = ref<number | null>(null);
-const settingsForm   = ref({ zone_daily_quota: 1, time_weekday: 1, time_weekend: 4, min_capacity: 1 });
+const settingsForm   = ref({ zone_daily_quota: 1, time_weekday: 1, time_weekend: 4, min_capacity: 1, icon: '' as string | null });
 const savingSettings = ref(false);
 
 // bulk edit all zones in current location
@@ -139,6 +147,7 @@ function openSettings(zone: ZoneRow) {
         time_weekday:     zone.time_weekday,
         time_weekend:     zone.time_weekend,
         min_capacity:     zone.min_capacity,
+        icon:             zone.icon ?? null,
     };
 }
 
@@ -152,6 +161,7 @@ async function saveSettings(zone: ZoneRow) {
         zone.time_weekday     = settingsForm.value.time_weekday;
         zone.time_weekend     = settingsForm.value.time_weekend;
         zone.min_capacity     = settingsForm.value.min_capacity;
+        zone.icon             = settingsForm.value.icon;
         editingZone.value     = null;
         Swal.fire({ title: 'บันทึกแล้ว', icon: 'success', timer: 1000, showConfirmButton: false });
     } catch (err: any) {
@@ -504,7 +514,10 @@ onMounted(() => fetchAll());
 
                     <!-- Zone info row -->
                     <div class="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50/60">
-                        <span class="text-sm font-bold text-slate-900">{{ zone.title }}</span>
+                        <span class="flex items-center gap-2 text-sm font-bold text-slate-900">
+                            <i v-if="zone.icon" :class="`fa-solid ${zone.icon}`" class="text-slate-400"></i>
+                            {{ zone.title }}
+                        </span>
                         <button v-if="editingZone !== zone.id"
                             @click="openSettings(zone)"
                             class="text-[10px] font-bold text-blue-700 hover:underline flex items-center gap-1">
@@ -558,6 +571,23 @@ onMounted(() => fetchAll());
                                     class="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200">
                                     <option v-for="t in times" :key="t.id" :value="t.id">{{ t.title }}</option>
                                 </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-600 mb-1.5">ไอคอนโซน (แสดงที่หน้าแรก)</label>
+                            <div class="flex flex-wrap gap-1.5">
+                                <button
+                                    @click="settingsForm.icon = null"
+                                    class="flex items-center justify-center w-8 h-8 border rounded-lg transition-colors"
+                                    :class="!settingsForm.icon ? 'bg-blue-900 border-blue-900 text-white' : 'border-slate-200 text-slate-300 hover:bg-slate-50'"
+                                    title="ไม่มีไอคอน"
+                                ><i class="text-xs fa-solid fa-ban"></i></button>
+                                <button
+                                    v-for="ic in ZONE_ICONS" :key="ic"
+                                    @click="settingsForm.icon = ic"
+                                    class="flex items-center justify-center w-8 h-8 border rounded-lg transition-colors"
+                                    :class="settingsForm.icon === ic ? 'bg-blue-900 border-blue-900 text-white' : 'border-slate-200 text-slate-500 hover:bg-slate-50'"
+                                ><i class="text-xs fa-solid" :class="ic"></i></button>
                             </div>
                         </div>
                         <div class="flex gap-2 justify-end">

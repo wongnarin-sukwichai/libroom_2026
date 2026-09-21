@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminBannerController;
 use App\Http\Controllers\Admin\AdminBookingController;
 use App\Http\Controllers\Admin\AdminHolidayController;
 use App\Http\Controllers\Admin\AdminKioskController;
@@ -58,6 +59,12 @@ Route::middleware('auth:admin')->group(function () {
 
     Route::get('/admin/settings',  [AdminSettingController::class, 'index']);
     Route::put('/admin/settings',  [AdminSettingController::class, 'update']);
+
+    Route::get('/admin/banners',            [AdminBannerController::class, 'index']);
+    Route::post('/admin/banners',           [AdminBannerController::class, 'store']);
+    Route::put('/admin/banners/reorder',    [AdminBannerController::class, 'reorder']);
+    Route::put('/admin/banners/{banner}',   [AdminBannerController::class, 'update']);
+    Route::delete('/admin/banners/{banner}',[AdminBannerController::class, 'destroy']);
 
     Route::get('/admin/times',          [AdminTimeController::class, 'index']);
     Route::post('/admin/times',         [AdminTimeController::class, 'store']);

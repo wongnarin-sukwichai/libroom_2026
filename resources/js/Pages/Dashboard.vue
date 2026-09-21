@@ -11,6 +11,7 @@ import Holidays from "../Components/Admin/Holidays.vue";
 import ServiceHours from "../Components/Admin/ServiceHours.vue";
 import AdminUsers from "../Components/Admin/AdminUsers.vue";
 import KioskAccess from "../Components/Admin/KioskAccess.vue";
+import Banners from "../Components/Admin/Banners.vue";
 
 const appBase = (window as any).APP_BASE ?? "";
 
@@ -25,6 +26,7 @@ type TabId =
     | "bookings"
     | "members"
     | "rooms"
+    | "banners"
     | "holidays"
     | "service_hours"
     | "admin_users"
@@ -385,6 +387,21 @@ const logoutAdmin = async () => {
                         <span v-show="!isSidebarCollapsed">จัดการพื้นที่ห้องบริการ</span>
                     </button>
                     <button
+                        @click="switchTab('banners')"
+                        :class="
+                            currentTab === 'banners'
+                                ? 'nav-active text-white'
+                                : 'hover:bg-slate-800 hover:text-white'
+                        "
+                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl"
+                    >
+                        <i
+                            class="w-4 text-sm text-center fa-solid fa-images"
+                            :class="currentTab === 'banners' ? 'text-amber-400' : ''"
+                        ></i>
+                        <span v-show="!isSidebarCollapsed">แบนเนอร์หน้าแรก</span>
+                    </button>
+                    <button
                         @click="switchTab('holidays')"
                         :class="
                             currentTab === 'holidays'
@@ -549,6 +566,7 @@ const logoutAdmin = async () => {
                         </div>
                         <Members v-else-if="currentTab === 'members'" />
                         <Rooms v-else-if="currentTab === 'rooms'" />
+                        <Banners v-else-if="currentTab === 'banners'" />
                         <Holidays v-else-if="currentTab === 'holidays'" />
                         <ServiceHours v-else-if="currentTab === 'service_hours'" />
                         <AdminUsers v-else-if="currentTab === 'admin_users'" />

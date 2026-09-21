@@ -42,7 +42,12 @@ class CancelExpiredBookings extends Command
                     ->get();
 
                 foreach ($siblings as $g) {
-                    $g->update(['status' => 'cancelled', 'cancelled_at' => Carbon::now()]);
+                    $g->update([
+                        'status'        => 'cancelled',
+                        'cancelled_at'  => Carbon::now(),
+                        'cancelled_by'  => 'ระบบ',
+                        'cancel_reason' => 'หมดเวลารอสมาชิกครบตามจำนวนขั้นต่ำ',
+                    ]);
                     $g->bookings()->update(['status' => 'cancelled']);
                 }
             }
@@ -86,7 +91,12 @@ class CancelExpiredBookings extends Command
                     ->get();
 
                 foreach ($siblings as $g) {
-                    $g->update(['status' => 'cancelled', 'cancelled_at' => Carbon::now()]);
+                    $g->update([
+                        'status'        => 'cancelled',
+                        'cancelled_at'  => Carbon::now(),
+                        'cancelled_by'  => 'ระบบ',
+                        'cancel_reason' => 'เจ้าหน้าที่ไม่ยืนยันภายใน 15 นาทีหลังเวลาเริ่มใช้งาน',
+                    ]);
                     $g->bookings()->update(['status' => 'cancelled']);
                     $cancelledCount++;
                 }

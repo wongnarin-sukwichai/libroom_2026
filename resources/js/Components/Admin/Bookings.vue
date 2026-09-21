@@ -18,6 +18,8 @@ interface BookingRow {
     loc_title: string;
     member_name: string;
     member_email: string;
+    cancelled_by?: string | null;
+    cancel_reason?: string | null;
 }
 
 interface Paginated {
@@ -206,8 +208,10 @@ async function reject(row: BookingRow) {
     const hours = row.hours > 1 ? ` (${row.hours} ชม.)` : "";
     const result = await Swal.fire({
         title: "ปฏิเสธการจอง?",
-        html: `<div class="text-sm"><b>${row.room_title}</b><br>${fmtDate(row.date)} • ${row.time_label}${hours}<br><span class="text-slate-400">${row.member_name}</span></div>`,
+        html: `<div class="text-sm text-left"><b>${row.room_title}</b><br>${fmtDate(row.date)} • ${row.time_label}${hours}<br><span class="text-slate-400">${row.member_name}</span></div>`,
         icon: "warning",
+        input: "text",
+        inputPlaceholder: "เหตุผล (ไม่บังคับ)",
         showCancelButton: true,
         confirmButtonColor: "#dc2626",
         cancelButtonColor: "#94a3b8",
@@ -216,7 +220,7 @@ async function reject(row: BookingRow) {
         reverseButtons: true,
     });
     if (!result.isConfirmed) return;
-    await axios.post("/admin/bookings/reject", { ids: row.ids });
+    await axios.post("/admin/bookings/reject", { ids: row.ids, reason: result.value || undefined });
     Swal.fire({
         title: "ปฏิเสธเรียบร้อย",
         icon: "success",
@@ -433,6 +437,13 @@ onMounted(() => fetch());
                                             row.status
                                         }}
                                     </span>
+                                    <div
+                                        v-if="row.status === 'cancelled' && (row.cancelled_by || row.cancel_reason)"
+                                        class="text-[10px] text-slate-400 mt-1.5 text-left max-w-[180px] mx-auto"
+                                    >
+                                        <div v-if="row.cancelled_by"><i class="mr-1 fa-solid fa-user-shield"></i>{{ row.cancelled_by }}</div>
+                                        <div v-if="row.cancel_reason" class="italic">"{{ row.cancel_reason }}"</div>
+                                    </div>
                                 </td>
                                 <td class="p-4 text-right">
                                     <div

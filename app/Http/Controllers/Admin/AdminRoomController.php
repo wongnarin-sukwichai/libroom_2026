@@ -18,7 +18,7 @@ class AdminRoomController extends Controller
     {
         $locations = Location::select('id', 'title', 'title_eng', 'status')
             ->with(['zones' => fn($q) => $q
-                ->select('id', 'loc_id', 'title', 'status', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'min_capacity', 'scan_prefix')
+                ->select('id', 'loc_id', 'title', 'status', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'min_capacity', 'scan_prefix', 'icon')
                 ->with([
                     'tools' => fn($t) => $t->select('id', 'zone_id', 'tool_id', 'quantity'),
                     'rooms' => fn($r) => $r
@@ -142,6 +142,7 @@ class AdminRoomController extends Controller
             'time_weekday'     => 'required|integer|exists:times,id',
             'time_weekend'     => 'required|integer|exists:times,id',
             'min_capacity'     => 'required|integer|min:1',
+            'icon'             => 'nullable|string|max:60',
         ]);
 
         $zone->update($data);

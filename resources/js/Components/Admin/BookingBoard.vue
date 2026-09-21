@@ -140,11 +140,13 @@ function canCancel(g: SlotGroup) {
     return g.status === "confirmed";
 }
 
-async function runAction(url: string, g: SlotGroup, confirmText: string, okText: string, color: string, icon: string) {
+async function runAction(url: string, g: SlotGroup, confirmText: string, okText: string, color: string, icon: string, withReason = false) {
     const r = await Swal.fire({
         title: confirmText,
-        html: `<div class="text-sm"><b>${day.value?.room.title}</b><br>${fmtDate(date.value)} • ${g.time_label}<br><span class="text-slate-400">${g.lead_name}</span></div>`,
+        html: `<div class="text-sm text-left"><b>${day.value?.room.title}</b><br>${fmtDate(date.value)} • ${g.time_label}<br><span class="text-slate-400">${g.lead_name}</span></div>`,
         icon,
+        input: withReason ? "text" : undefined,
+        inputPlaceholder: withReason ? "เหตุผล (ไม่บังคับ)" : undefined,
         showCancelButton: true,
         confirmButtonColor: color,
         cancelButtonColor: "#94a3b8",
@@ -155,7 +157,7 @@ async function runAction(url: string, g: SlotGroup, confirmText: string, okText:
     if (!r.isConfirmed) return;
     acting.value = true;
     try {
-        await axios.post(url, { ids: g.ids });
+        await axios.post(url, { ids: g.ids, reason: withReason ? (r.value || undefined) : undefined });
         await Promise.all([fetchDay(), fetchSummary()]);
         const h = slotModal.value?.hour;
         slotModal.value = h != null ? day.value?.slots.find(s => s.hour === h) ?? null : null;
@@ -168,9 +170,9 @@ async function runAction(url: string, g: SlotGroup, confirmText: string, okText:
 }
 
 const approve = (g: SlotGroup) => runAction("/admin/bookings/approve", g, "อนุมัติการจอง?", "อนุมัติ", "#16a34a", "question");
-const reject  = (g: SlotGroup) => runAction("/admin/bookings/reject",  g, "ปฏิเสธการจอง?",  "ปฏิเสธ",  "#dc2626", "warning");
+const reject  = (g: SlotGroup) => runAction("/admin/bookings/reject",  g, "ปฏิเสธการจอง?",  "ปฏิเสธ",  "#dc2626", "warning", true);
 const checkin = (g: SlotGroup) => runAction("/admin/bookings/checkin", g, "เช็คอินการจองนี้?", "เช็คอิน", "#2563eb", "question");
-const cancel  = (g: SlotGroup) => runAction("/admin/bookings/cancel",  g, "ยกเลิกการจองนี้?", "ยกเลิกการจอง", "#dc2626", "warning");
+const cancel  = (g: SlotGroup) => runAction("/admin/bookings/cancel",  g, "ยกเลิกการจองนี้?", "ยกเลิกการจอง", "#dc2626", "warning", true);
 
 onMounted(async () => {
     await fetchTree();

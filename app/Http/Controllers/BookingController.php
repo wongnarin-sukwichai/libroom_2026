@@ -124,7 +124,7 @@ class BookingController extends Controller
             return response()->json(['message' => 'ไม่สามารถยกเลิกการจองที่ผ่านมาแล้วได้'], 422);
         }
 
-        DB::transaction(function () use ($group) {
+        DB::transaction(function () use ($group, $member) {
             // ยกเลิกทุก slot ในเซสชันเดียวกัน (room+date+lead)
             $siblings = BookingGroup::where('lead_user_id', $group->lead_user_id)
                 ->where('room_id', $group->room_id)
@@ -133,7 +133,12 @@ class BookingController extends Controller
                 ->get();
 
             foreach ($siblings as $g) {
-                $g->update(['status' => 'cancelled', 'cancelled_at' => Carbon::now()]);
+                $g->update([
+                    'status'        => 'cancelled',
+                    'cancelled_at'  => Carbon::now(),
+                    'cancelled_by'  => "สมาชิก ({$member->name})",
+                    'cancel_reason' => 'ยกเลิกโดยสมาชิกเอง',
+                ]);
                 $g->bookings()->update(['status' => 'cancelled']);
             }
         });

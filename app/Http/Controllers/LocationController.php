@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Banner;
 use App\Models\BookingGroup;
 use App\Models\Holiday;
 use App\Models\Location;
@@ -33,11 +34,19 @@ class LocationController extends Controller
             ->where('m', (string)$today->month)
             ->exists();
 
+        $banners = Banner::where('status', '0')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['id', 'image_path'])
+            ->map(fn ($b) => ['image' => '/storage/' . $b->image_path])
+            ->values();
+
         return inertia($component, [
             'locations'      => $this->loadLocationsTree(),
             'todayIsHoliday' => $todayIsHoliday,
             'todayDate'      => $today->format('Y-m-d'),
             'roomStatusPool' => $this->publicRoomStatusPool($today),
+            'banners'        => $banners,
         ]);
     }
 
@@ -46,7 +55,7 @@ class LocationController extends Controller
     {
         $data = Location::select('id', 'title', 'title_eng', 'detail', 'status')
             ->with(['zones' => fn($q) => $q
-                ->select('id', 'loc_id', 'pic', 'title', 'title_eng', 'detail', 'capacity', 'tool', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'status')
+                ->select('id', 'loc_id', 'pic', 'icon', 'title', 'title_eng', 'detail', 'capacity', 'tool', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'status')
                 ->with([
                     'tools.tool' => fn($tt) => $tt->select('id', 'name', 'icon'),
                     'rooms' => fn($r) => $r

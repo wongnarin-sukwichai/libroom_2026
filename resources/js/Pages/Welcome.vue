@@ -7,6 +7,7 @@ const props = defineProps({
     todayIsHoliday: { type: Boolean, default: false },
     todayDate:      { type: String,  default: () => new Date().toISOString().split('T')[0] },
     roomStatusPool: { type: Object,  default: () => ({ columns: [], rooms: [] }) },
+    banners:        { type: Array,   default: () => [] },
 });
 
 const appBase = window.APP_BASE ?? '';
@@ -23,6 +24,18 @@ const currentLocation = computed(() => props.locations?.[activeArea.value - 1]);
 const currentZones    = computed(() => currentLocation.value?.zones ?? []);
 const zoneTitle  = (zone) => currentLang.value === 'en' ? (zone?.title_eng ?? zone?.title) : zone?.title;
 const zoneDetail = (zone) => zone?.detail ?? '';
+
+// แยกชื่อโซนตรงเว้นวรรคที่ 1-2 นับจากซ้าย → ส่วนกลาง (ระหว่างเว้นวรรคที่ 1 กับ 2) เป็นสีเหลือง ที่เหลือปกติ
+// เช่น "Study Room" → "Study" ปกติ + "Room" เหลือง (มีเว้นวรรคเดียว เลยเป็นคำท้าย)
+//      "Meeting MSU Space" → "Meeting" ปกติ + "MSU" เหลือง + "Space" ปกติ
+const titleParts = (title) => {
+    if (!title) return { before: '', mid: '', after: '' };
+    const i1 = title.indexOf(' ');
+    if (i1 === -1) return { before: title, mid: '', after: '' };
+    const i2 = title.indexOf(' ', i1 + 1);
+    if (i2 === -1) return { before: title.slice(0, i1), mid: title.slice(i1 + 1), after: '' };
+    return { before: title.slice(0, i1), mid: title.slice(i1 + 1, i2), after: title.slice(i2 + 1) };
+};
 import Swal from "sweetalert2";
 
 // --- หน้าทดลอง: "บริการยอดนิยม" — สุ่ม 6 โซนจริงจากทั้งระบบ (สุ่มครั้งเดียวตอนโหลดหน้า ไม่สุ่มซ้ำทุก re-render) ---
@@ -65,25 +78,23 @@ const bookingSteps = computed(() =>
           ]
 );
 
-// --- หน้าทดลอง: Hero banner (สไลด์) ---
-// เพิ่มรูปสไลด์ได้โดยเติม object ในอาเรย์นี้ เช่น { image: "/imgs/banner-2.png" }
-// TODO: banner.jpg / locations/1.jpg เป็นรูปจริงที่มีอยู่แล้วในระบบ ใส่ไว้ให้เห็นสไลด์ทำงานก่อน
-// แนะนำเปลี่ยนเป็นรูปที่ออกแบบมาสำหรับสไลด์โดยเฉพาะ (สเปค 1600×460px ตามที่แนะนำไว้)
-const bannerSlides = [
+// --- Hero banner (สไลด์) ---
+// มาจากที่แอดมินอัปโหลดไว้ (แท็บ "แบนเนอร์หน้าแรก") — ถ้ายังไม่มีเลย ใช้รูปเริ่มต้นสำรองไว้ก่อน
+const FALLBACK_BANNERS = [
     { image: "/imgs/banner-1.png" },
-    { image: "/imgs/banner.jpg" },
-    { image: "/imgs/locations/1.jpg" },
+    { image: "/imgs/banner.png" },
 ];
+const bannerSlides = computed(() => props.banners?.length ? props.banners : FALLBACK_BANNERS);
 const activeBanner = ref(0);
 let bannerTimer = null;
 
 const goToBanner = (i) => { activeBanner.value = i; };
-const nextBanner = () => { activeBanner.value = (activeBanner.value + 1) % bannerSlides.length; };
-const prevBanner = () => { activeBanner.value = (activeBanner.value - 1 + bannerSlides.length) % bannerSlides.length; };
+const nextBanner = () => { activeBanner.value = (activeBanner.value + 1) % bannerSlides.value.length; };
+const prevBanner = () => { activeBanner.value = (activeBanner.value - 1 + bannerSlides.value.length) % bannerSlides.value.length; };
 
 const stopBannerAutoplay = () => { if (bannerTimer) clearInterval(bannerTimer); };
 const startBannerAutoplay = () => {
-    if (bannerSlides.length < 2) return; // สไลด์เดียว ไม่ต้องเลื่อนอัตโนมัติ
+    if (bannerSlides.value.length < 2) return; // สไลด์เดียว ไม่ต้องเลื่อนอัตโนมัติ
     stopBannerAutoplay();
     bannerTimer = setInterval(nextBanner, 5000);
 };
@@ -93,20 +104,15 @@ const resumeBanner = () => startBannerAutoplay();
 onMounted(() => startBannerAutoplay());
 onUnmounted(() => stopBannerAutoplay());
 
-// --- หน้าทดลอง: วน highlight "ขั้นตอนการจองพื้นที่" (ตกแต่งอย่างเดียว ไม่มีผลต่อข้อมูล) ---
-const activeStep = ref(0);
-let stepTimer = null;
+// "ขั้นตอนการจองพื้นที่" — ไฮไลต์ขั้นที่ 1 ค้างไว้เฉยๆ (ไม่มี animation)
+const activeStep = 0;
 
-const stopStepLoop = () => { if (stepTimer) clearInterval(stepTimer); };
-const startStepLoop = () => {
-    stopStepLoop();
-    stepTimer = setInterval(() => {
-        activeStep.value = (activeStep.value + 1) % bookingSteps.value.length;
-    }, 2800);
-};
-
-onMounted(() => startStepLoop());
-onUnmounted(() => stopStepLoop());
+// ปุ่มเด้งกลับขึ้นบนสุด — โชว์เมื่อเลื่อนลงมาระดับหนึ่ง
+const showBackToTop = ref(false);
+const onScroll = () => { showBackToTop.value = window.scrollY > 500; };
+const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+onMounted(() => window.addEventListener('scroll', onScroll, { passive: true }));
+onUnmounted(() => window.removeEventListener('scroll', onScroll));
 
 // --- 1. ระบบจัดการเปลี่ยนภาษา (Localization Dictionary) ---
 const currentLang = ref("th");
@@ -701,10 +707,10 @@ const hideToast = () => {
         </header>
 
         <!-- ฮีโร่ (สไลด์) -->
-        <section class="relative w-full overflow-hidden bg-slate-950 aspect-[1277/368]"
+        <section class="relative w-full overflow-hidden bg-slate-950 aspect-[1600/600] max-h-[380px]"
             @mouseenter="pauseBanner" @mouseleave="resumeBanner">
             <div v-for="(slide, i) in bannerSlides" :key="slide.image"
-                class="absolute inset-0 transition-opacity duration-700 ease-in-out bg-center bg-cover"
+                class="absolute inset-0 transition-opacity duration-700 ease-in-out bg-center bg-no-repeat bg-contain"
                 :class="i === activeBanner ? 'opacity-100' : 'opacity-0'"
                 :style="{ backgroundImage: `url('${slide.image}')` }"
             ></div>
@@ -758,6 +764,48 @@ const hideToast = () => {
                 </div>
             </div>
 
+            <!-- ═══ ขั้นตอนการจองพื้นที่ ═══ -->
+            <section class="p-5 mb-8 bg-white border shadow-sm rounded-2xl border-slate-200">
+                <div class="flex flex-col gap-6 lg:flex-row lg:items-center">
+                    <div class="shrink-0 lg:w-48">
+                        <h2 class="flex items-center gap-2 text-lg font-extrabold text-slate-900 font-prompt">
+                            <span class="w-1.5 h-5 rounded-full bg-amber-400"></span>ขั้นตอนการจองพื้นที่
+                        </h2>
+                        <p class="mt-1 text-sm text-slate-400">จองง่าย ใช้เวลาไม่กี่ขั้นตอน</p>
+                    </div>
+
+                    <!-- จอเล็ก: กริด 2 คอลัมน์ ไม่มีเส้นเชื่อม -->
+                    <div class="grid flex-1 grid-cols-2 gap-4 lg:hidden">
+                        <div v-for="(step, i) in bookingSteps" :key="i" class="flex items-start gap-3">
+                            <span class="flex items-center justify-center text-sm font-extrabold transition-colors duration-500 rounded-full w-9 h-9 shrink-0 text-slate-900"
+                                :class="i === activeStep ? 'bg-amber-400' : 'bg-slate-100 border-2 border-slate-200'"
+                            >{{ i + 1 }}</span>
+                            <div class="min-w-0 text-left">
+                                <div class="text-xs font-bold text-slate-800">{{ step.title }}</div>
+                                <div class="text-[11px] text-slate-400 mt-0.5">{{ step.desc }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- จอใหญ่: แถวเดียว มีเส้นประเชื่อมระหว่างขั้นตอน -->
+                    <div class="flex-1 hidden lg:flex lg:items-start">
+                        <template v-for="(step, i) in bookingSteps" :key="`d-${i}`">
+                            <div class="flex items-start flex-1 min-w-0 gap-3 px-1">
+                                <span class="flex items-center justify-center text-sm font-extrabold rounded-full w-9 h-9 shrink-0 text-slate-900"
+                                    :class="i === 0 ? 'bg-amber-400' : 'bg-slate-100 border-2 border-slate-200'"
+                                >{{ i + 1 }}</span>
+                                <div class="min-w-0 text-left">
+                                    <div class="text-xs font-bold text-slate-800">{{ step.title }}</div>
+                                    <div class="text-[11px] text-slate-400 mt-0.5">{{ step.desc }}</div>
+                                </div>
+                            </div>
+                            <div v-if="i < bookingSteps.length - 1"
+                                class="flex-1 min-w-[12px] border-t-2 border-dashed border-amber-200 mt-[18px]"></div>
+                        </template>
+                    </div>
+                </div>
+            </section>
+
             <!-- ═══ เลือกพื้นที่บริการ (3 location จริง) ═══ -->
             <section id="locations" class="mb-8">
                 <h2 class="flex items-center gap-2 mb-4 text-xl font-extrabold text-slate-900 font-prompt">
@@ -810,12 +858,12 @@ const hideToast = () => {
                             <div class="text-sm font-bold text-red-700">พื้นที่นี้ไม่พร้อมให้บริการในขณะนี้</div>
                         </div>
 
-                        <div v-else class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                        <div v-else class="grid grid-cols-2 gap-3 sm:gap-5 sm:grid-cols-2 lg:grid-cols-3">
                             <button
                                 v-for="zone in currentZones" :key="zone.id"
                                 @click="zone.status === '0' && initiateBooking(zone)"
                                 :disabled="zone.status !== '0'"
-                                class="relative h-52 overflow-hidden text-left transition-all bg-slate-900 shadow-sm group rounded-2xl disabled:cursor-not-allowed"
+                                class="relative overflow-hidden text-left transition-all shadow-sm h-52 bg-slate-900 group rounded-2xl disabled:cursor-not-allowed"
                             >
                                 <img v-if="zone.pic" :src="`/imgs/zones/${zone.pic}`" :alt="zoneTitle(zone)"
                                     class="absolute inset-0 object-cover w-full h-full transition-transform duration-300 group-hover:scale-105"
@@ -826,8 +874,15 @@ const hideToast = () => {
                                 <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent"></div>
 
                                 <div class="absolute inset-x-0 bottom-0 p-4 text-white">
-                                    <h3 class="text-base font-extrabold font-prompt">{{ zoneTitle(zone) }}</h3>
-                                    <p class="mt-0.5 text-[11px] text-slate-200 line-clamp-1">{{ zoneDetail(zone) || 'พื้นที่ให้บริการ' }}</p>
+                                    <h3 class="text-xl font-extrabold font-prompt">
+                                        {{ titleParts(zoneTitle(zone)).before }}
+                                        <span class="text-amber-400">{{ titleParts(zoneTitle(zone)).mid }}</span>
+                                        {{ titleParts(zoneTitle(zone)).after }}
+                                    </h3>
+                                    <p class="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-200 line-clamp-1">
+                                        <i v-if="zone.icon" :class="`fa-solid ${zone.icon}`" class="text-xl"></i>
+                                        {{ zoneDetail(zone) || 'พื้นที่ให้บริการ' }}
+                                    </p>
                                 </div>
 
                                 <span v-if="zone.status !== '0'"
@@ -835,7 +890,7 @@ const hideToast = () => {
                                     ปิดให้บริการ
                                 </span>
                                 <span v-else
-                                    class="absolute flex items-center justify-center text-sm font-bold text-slate-900 transition-colors rounded-full bottom-4 right-4 w-9 h-9 bg-amber-400 group-hover:bg-amber-300">
+                                    class="absolute flex items-center justify-center text-sm font-bold transition-colors rounded-full text-slate-900 bottom-4 right-4 w-9 h-9 bg-amber-400 group-hover:bg-amber-300">
                                     <i class="fa-solid fa-arrow-right"></i>
                                 </span>
                             </button>
@@ -843,50 +898,7 @@ const hideToast = () => {
                     </div>
                 </Transition>
                 </div>
-            </section>
-
-            <!-- ═══ ขั้นตอนการจองพื้นที่ (วน highlight อัตโนมัติ หยุดเมื่อชี้เมาส์) ═══ -->
-            <section class="p-5 mb-8 bg-white border shadow-sm rounded-2xl border-slate-200"
-                @mouseenter="stopStepLoop" @mouseleave="startStepLoop">
-                <div class="flex flex-col gap-6 lg:flex-row lg:items-center">
-                    <div class="shrink-0 lg:w-48">
-                        <h2 class="flex items-center gap-2 text-lg font-extrabold text-slate-900 font-prompt">
-                            <span class="w-1.5 h-5 rounded-full bg-amber-400"></span>ขั้นตอนการจองพื้นที่
-                        </h2>
-                        <p class="mt-1 text-sm text-slate-400">จองง่าย ใช้เวลาไม่กี่ขั้นตอน</p>
-                    </div>
-
-                    <!-- จอเล็ก: กริด 2 คอลัมน์ ไม่มีเส้นเชื่อม -->
-                    <div class="grid flex-1 grid-cols-2 gap-4 lg:hidden">
-                        <div v-for="(step, i) in bookingSteps" :key="i" class="flex items-start gap-3">
-                            <span class="flex items-center justify-center text-sm font-extrabold transition-colors duration-500 rounded-full w-9 h-9 shrink-0 text-slate-900"
-                                :class="i === activeStep ? 'bg-amber-400' : 'bg-slate-100 border-2 border-slate-200'"
-                            >{{ i + 1 }}</span>
-                            <div class="min-w-0 text-left">
-                                <div class="text-xs font-bold text-slate-800">{{ step.title }}</div>
-                                <div class="text-[11px] text-slate-400 mt-0.5">{{ step.desc }}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- จอใหญ่: แถวเดียว มีเส้นประเชื่อมระหว่างขั้นตอน -->
-                    <div class="flex-1 hidden lg:flex lg:items-start">
-                        <template v-for="(step, i) in bookingSteps" :key="`d-${i}`">
-                            <div class="flex items-start flex-1 min-w-0 gap-3 px-1">
-                                <span class="flex items-center justify-center text-sm font-extrabold rounded-full w-9 h-9 shrink-0 text-slate-900"
-                                    :class="i === 0 ? 'bg-amber-400' : 'bg-slate-100 border-2 border-slate-200'"
-                                >{{ i + 1 }}</span>
-                                <div class="min-w-0 text-left">
-                                    <div class="text-xs font-bold text-slate-800">{{ step.title }}</div>
-                                    <div class="text-[11px] text-slate-400 mt-0.5">{{ step.desc }}</div>
-                                </div>
-                            </div>
-                            <div v-if="i < bookingSteps.length - 1"
-                                class="flex-1 min-w-[12px] border-t-2 border-dashed border-amber-200 mt-[18px]"></div>
-                        </template>
-                    </div>
-                </div>
-            </section>
+            </section>           
 
             <!-- ═══ บริการยอดนิยม (สุ่ม 6 โซนจริงจากทั้งระบบ) ═══ -->
             <section class="mb-8">
@@ -904,8 +916,15 @@ const hideToast = () => {
                                 class="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105" />
                         </div>
                         <div class="p-3">
-                            <h4 class="text-xs font-bold truncate text-slate-900">{{ zoneTitle(zone) }}</h4>
-                            <p class="text-[10px] text-slate-400 truncate mt-0.5">{{ zone.__loc?.title }}</p>
+                            <h4 class="text-xs font-bold truncate text-slate-900">
+                                {{ titleParts(zoneTitle(zone)).before }}
+                                <span class="text-amber-500">{{ titleParts(zoneTitle(zone)).mid }}</span>
+                                {{ titleParts(zoneTitle(zone)).after }}
+                            </h4>
+                            <p class="flex items-center gap-1 text-[10px] text-slate-400 truncate mt-0.5">
+                                <i v-if="zone.icon" :class="`fa-solid ${zone.icon}`"></i>
+                                {{ zone.__loc?.title }}
+                            </p>
                             <span class="flex items-center justify-center w-full gap-1 mt-2 text-xs font-bold text-slate-900 bg-amber-400 group-hover:bg-amber-500 px-2 py-1.5 rounded-lg transition-colors">
                                 จองเลย <i class="fa-solid fa-arrow-right text-[8px]"></i>
                             </span>
@@ -1468,14 +1487,14 @@ const hideToast = () => {
         >
             <div class="w-full max-w-lg overflow-hidden bg-white border shadow-2xl rounded-2xl border-slate-200">
                 <!-- Header -->
-                <div class="flex items-center justify-between p-5 text-white bg-blue-900">
+                <div class="flex items-center justify-between p-5 text-slate-900 bg-amber-400">
                     <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-calendar-check text-amber-400"></i>
+                        <i class="fa-solid fa-calendar-check text-slate-900"></i>
                         <h3 class="text-sm font-bold font-prompt md:text-base">
                             {{ selectedRoom ? t("bookConfirmHeader") : "เลือกห้องที่ต้องการจอง" }}
                         </h3>
                     </div>
-                    <button @click="closeModal('booking')" class="transition-colors text-slate-300 hover:text-white">
+                    <button @click="closeModal('booking')" class="transition-colors text-slate-900 hover:text-white">
                         <i class="text-lg fa-solid fa-xmark"></i>
                     </button>
                 </div>
@@ -1484,7 +1503,7 @@ const hideToast = () => {
                     <!-- Zone name badge + ชุดอุปกรณ์มาตรฐานของโซน -->
                     <div class="p-3 border bg-slate-50 border-slate-200 rounded-xl">
                         <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">พื้นที่</div>
-                        <div class="font-bold text-blue-900 text-sm pt-0.5">{{ selectedZone ? zoneTitle(selectedZone) : '' }}</div>
+                        <div class="font-bold text-slate-900 text-sm pt-0.5">{{ selectedZone ? zoneTitle(selectedZone) : '' }}</div>
                         <div v-if="selectedZone?.equipment?.length" class="pt-2 mt-2 border-t border-slate-200">
                             <div class="text-[10px] text-slate-400 font-semibold mb-1">ชุดอุปกรณ์ภายในโซน</div>
                             <div class="flex flex-wrap gap-1">
@@ -1512,7 +1531,7 @@ const hideToast = () => {
                         <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
                         <div>
                             <span>{{ t("bookingLoginAlert") }}</span>
-                            <a :href="`${appBase}/auth/google`" class="text-blue-900 hover:underline font-bold flex items-center gap-1 mt-1.5">
+                            <a :href="`${appBase}/auth/google`" class="text-amber-600 hover:underline font-bold flex items-center gap-1 mt-1.5">
                                 <i class="fa-brands fa-google"></i>
                                 เข้าสู่ระบบด้วย Google
                             </a>
@@ -1540,7 +1559,7 @@ const hideToast = () => {
                                     <i class="fa-solid fa-users mr-0.5"></i>ต้องครบกลุ่ม
                                 </span>
                                 <span v-if="zoneUniformAccessControl === '1'"
-                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-blue-100 text-blue-700 border-blue-200">
+                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
                                     <i class="fa-solid fa-qrcode mr-0.5"></i>แสกน QR Code เพื่อเข้าใช้บริการ
                                 </span>
                                 <span v-else-if="zoneUniformAccessControl === '0'"
@@ -1558,7 +1577,7 @@ const hideToast = () => {
                                     @click="room.status !== '1' && (selectedRoom = room)"
                                     :class="room.status === '1'
                                         ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                                        : 'bg-white border-slate-200 text-slate-700 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'"
+                                        : 'bg-white border-slate-200 text-slate-700 hover:border-amber-400 hover:bg-amber-50 cursor-pointer'"
                                     class="border rounded-lg px-1.5 py-2 text-[11px] font-semibold text-center transition-all leading-tight flex flex-col items-center gap-0.5"
                                 >
                                     <span class="w-full truncate">{{ room.title }}</span>
@@ -1580,7 +1599,7 @@ const hideToast = () => {
                                 :disabled="room.status === '1'"
                                 :class="room.status === '1'
                                     ? 'opacity-60 cursor-not-allowed border-slate-200 bg-slate-50'
-                                    : 'hover:border-blue-400 hover:bg-blue-50 cursor-pointer'"
+                                    : 'hover:border-amber-400 hover:bg-amber-50 cursor-pointer'"
                                 class="w-full text-left p-3.5 border border-slate-200 rounded-xl transition-all"
                             >
                                 <div class="flex items-start justify-between gap-2">
@@ -1603,7 +1622,7 @@ const hideToast = () => {
                                                 <i class="fa-solid fa-users mr-0.5"></i>ต้องครบกลุ่ม
                                             </span>
                                             <span v-if="room.access_control === '1'"
-                                                class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-blue-100 text-blue-700 border-blue-200">
+                                                class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
                                                 <i class="fa-solid fa-qrcode mr-0.5"></i>แสกน QR Code เพื่อเข้าใช้บริการ
                                             </span>
                                             <span v-else
@@ -1633,7 +1652,7 @@ const hideToast = () => {
                         <div class="flex items-center gap-2">
                             <button type="button" @click="selectedRoom = null; availableTimes = []"
                                 v-if="selectedZone?.rooms?.length > 1"
-                                class="flex items-center gap-1 text-xs text-blue-700 hover:underline">
+                                class="flex items-center gap-1 text-xs text-amber-600 hover:underline">
                                 <i class="fa-solid fa-chevron-left"></i> เปลี่ยนห้อง
                             </button>
                             <div class="text-xs font-bold text-slate-700">
@@ -1663,7 +1682,7 @@ const hideToast = () => {
                                 <span
                                     v-for="rt in selectedRoom.equipment"
                                     :key="rt.tool_id"
-                                    class="text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full flex items-center gap-1 font-medium"
+                                    class="text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-full flex items-center gap-1 font-medium"
                                 >
                                     <i v-if="rt.icon" :class="`fa-solid ${rt.icon} text-[10px]`"></i>
                                     {{ rt.name }}<template v-if="rt.quantity > 1"> ×{{ rt.quantity }}</template>
@@ -1698,7 +1717,7 @@ const hideToast = () => {
                                     </span>
                                 </label>
                                 <div class="flex items-center gap-3 text-[10px] text-slate-500">
-                                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-blue-600 rounded"></span>เลือก</span>
+                                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-900"></span>เลือก</span>
                                     <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-200"></span>ไม่พร้อม</span>
                                     <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-red-200 rounded"></span>ไม่ว่าง</span>
                                 </div>
@@ -1740,10 +1759,10 @@ const hideToast = () => {
                                     @click="selectSlot(time.id)"
                                     :disabled="getSlotState(time.id) === 'booked'"
                                     :class="{
-                                        'bg-blue-600 border-blue-700 text-white font-bold shadow-sm':          getSlotState(time.id) === 'selected',
+                                        'bg-slate-900 border-slate-900 text-white font-bold shadow-sm':          getSlotState(time.id) === 'selected',
                                         'bg-red-50 border-red-200 text-red-400 cursor-not-allowed line-through': getSlotState(time.id) === 'booked',
                                         'bg-slate-100 border-slate-200 text-slate-300 cursor-default':          getSlotState(time.id) === 'dim',
-                                        'bg-white border-slate-200 text-slate-600 hover:border-blue-400 hover:bg-blue-50': getSlotState(time.id) === 'available',
+                                        'bg-white border-slate-200 text-slate-600 hover:border-amber-400 hover:bg-amber-50': getSlotState(time.id) === 'available',
                                     }"
                                     class="px-1 py-2.5 text-[11px] border rounded-lg text-center transition-all leading-tight font-medium"
                                 >
@@ -1754,11 +1773,11 @@ const hideToast = () => {
                         </div>
 
                         <!-- สรุปช่วงเวลาที่เลือก -->
-                        <div v-if="bookingSummary" class="flex items-center gap-3 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
-                            <i class="text-base text-blue-500 fa-solid fa-clock shrink-0"></i>
+                        <div v-if="bookingSummary" class="flex items-center gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-slate-900">
+                            <i class="text-base text-amber-500 fa-solid fa-clock shrink-0"></i>
                             <div class="flex-1">
                                 <div class="font-bold">{{ bookingSummary.start }} – {{ bookingSummary.end }} น.</div>
-                                <div class="text-blue-500 mt-0.5">รวม {{ bookingSummary.hours }} ชั่วโมง (จากโควต้า {{ quota }} ชม.)</div>
+                                <div class="text-amber-500 mt-0.5">รวม {{ bookingSummary.hours }} ชั่วโมง (จากโควต้า {{ quota }} ชม.)</div>
                             </div>
                         </div>
                         <div v-else class="p-3 text-center text-[11px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
@@ -1769,7 +1788,7 @@ const hideToast = () => {
                         <!-- Checkbox ยอมรับเงื่อนไข -->
                         <label class="flex items-start gap-2 pt-1 cursor-pointer">
                             <input v-model="bookingForm.terms" type="checkbox" required
-                                class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5" />
+                                class="rounded border-slate-300 text-slate-900 focus:ring-amber-400 mt-0.5" />
                             <span class="text-[11px] text-slate-500 leading-normal">{{ t("bookTerms") }}</span>
                         </label>
 
@@ -1882,6 +1901,18 @@ const hideToast = () => {
                     <i class="text-sm fa-solid fa-xmark"></i>
                 </button>
             </div>
+        </Transition>
+
+        <!-- ปุ่มเด้งกลับขึ้นบนสุด -->
+        <Transition name="fade">
+            <button
+                v-if="showBackToTop"
+                @click="scrollToTop"
+                aria-label="กลับขึ้นบนสุด"
+                class="fixed z-40 flex items-center justify-center text-white transition-all rounded-full shadow-lg bottom-6 right-6 w-11 h-11 bg-slate-900 hover:bg-amber-400 hover:text-slate-900"
+            >
+                <i class="fa-solid fa-arrow-up"></i>
+            </button>
         </Transition>
     </div>
 </template>

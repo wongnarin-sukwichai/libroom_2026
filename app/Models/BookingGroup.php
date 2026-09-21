@@ -11,7 +11,7 @@ class BookingGroup extends Model
     protected $fillable = [
         'room_id', 'date', 'time_id', 'lead_user_id', 'admin_id',
         'status', 'source', 'join_token', 'token_expires_at',
-        'cancel_code', 'cancelled_at',
+        'cancel_code', 'cancelled_at', 'cancelled_by', 'cancel_reason',
     ];
 
     protected $casts = ['date' => 'date'];

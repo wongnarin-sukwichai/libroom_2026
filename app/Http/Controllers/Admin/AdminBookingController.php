@@ -127,6 +127,8 @@ class AdminBookingController extends Controller
                     'loc_title'    => $g->room?->zone?->location?->title,
                     'member_name'  => $g->lead?->name  ?? ($g->admin ? $g->admin->name  . ' (เจ้าหน้าที่)' : null),
                     'member_email' => $g->lead?->email ?? $g->admin?->email,
+                    'cancelled_by'  => $g->cancelled_by,
+                    'cancel_reason' => $g->cancel_reason,
                 ];
             }
         }
@@ -156,6 +158,8 @@ class AdminBookingController extends Controller
             'loc_title'      => $s['loc_title'],
             'member_name'    => $s['member_name'],
             'member_email'   => $s['member_email'],
+            'cancelled_by'   => $s['cancelled_by']  ?? null,
+            'cancel_reason'  => $s['cancel_reason'] ?? null,
         ];
     }
 
@@ -301,12 +305,23 @@ class AdminBookingController extends Controller
     /** ยกเลิกการจองที่ยืนยันแล้ว (pending/waiting ใช้ reject) */
     public function cancelSession(Request $request)
     {
-        $ids = $request->validate(['ids' => 'required|array', 'ids.*' => 'integer'])['ids'];
+        $data = $request->validate([
+            'ids'    => 'required|array',
+            'ids.*'  => 'integer',
+            'reason' => 'nullable|string|max:255',
+        ]);
 
-        $groups = BookingGroup::whereIn('id', $ids)->where('status', 'confirmed')->get();
+        $groups   = BookingGroup::whereIn('id', $data['ids'])->where('status', 'confirmed')->get();
+        $admin    = Auth::guard('admin')->user();
+        $byLabel  = $admin ? "เจ้าหน้าที่ ({$admin->name})" : 'เจ้าหน้าที่';
 
         foreach ($groups as $g) {
-            $g->update(['status' => 'cancelled', 'cancelled_at' => Carbon::now()]);
+            $g->update([
+                'status'        => 'cancelled',
+                'cancelled_at'  => Carbon::now(),
+                'cancelled_by'  => $byLabel,
+                'cancel_reason' => $data['reason'] ?? null,
+            ]);
             $g->bookings()->update(['status' => 'cancelled']);
         }
 
@@ -423,14 +438,26 @@ class AdminBookingController extends Controller
 
     public function rejectSession(Request $request)
     {
-        $ids = $request->validate(['ids' => 'required|array', 'ids.*' => 'integer'])['ids'];
+        $data = $request->validate([
+            'ids'    => 'required|array',
+            'ids.*'  => 'integer',
+            'reason' => 'nullable|string|max:255',
+        ]);
 
-        $groups = BookingGroup::whereIn('id', $ids)
+        $groups = BookingGroup::whereIn('id', $data['ids'])
             ->whereIn('status', ['pending', 'waiting_confirm'])
             ->get();
 
+        $admin   = Auth::guard('admin')->user();
+        $byLabel = $admin ? "เจ้าหน้าที่ ({$admin->name})" : 'เจ้าหน้าที่';
+
         foreach ($groups as $g) {
-            $g->update(['status' => 'cancelled', 'cancelled_at' => Carbon::now()]);
+            $g->update([
+                'status'        => 'cancelled',
+                'cancelled_at'  => Carbon::now(),
+                'cancelled_by'  => $byLabel,
+                'cancel_reason' => $data['reason'] ?? null,
+            ]);
             $g->bookings()->update(['status' => 'cancelled']);
         }
 
