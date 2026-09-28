@@ -15,7 +15,20 @@ const loading  = ref(false);
 const uploading = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
-const imgUrl = (path: string) => `/storage/${path}`;
+const appBase = (window as any).APP_BASE ?? '';
+const imgUrl = (path: string) => `${appBase}/imgs/banner/${path}`;
+
+function previewImage(b: BannerRow, index: number) {
+    Swal.fire({
+        imageUrl: imgUrl(b.image_path),
+        imageAlt: `แบนเนอร์ลำดับที่ ${index + 1}`,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: 'auto',
+        padding: '1rem',
+        background: '#0f172a',
+    });
+}
 
 async function fetchBanners() {
     loading.value = true;
@@ -160,9 +173,15 @@ onMounted(() => fetchBanners());
                     ><i class="fa-solid fa-chevron-down text-[10px]"></i></button>
                 </div>
 
-                <div class="w-40 overflow-hidden bg-slate-100 rounded-xl shrink-0 aspect-[1600/400]">
+                <button
+                    type="button" @click="previewImage(b, i)"
+                    class="relative w-40 overflow-hidden bg-slate-100 rounded-xl shrink-0 aspect-[1600/400] group"
+                >
                     <img :src="imgUrl(b.image_path)" class="object-cover w-full h-full" />
-                </div>
+                    <span class="absolute inset-0 flex items-center justify-center transition-colors opacity-0 bg-black/0 group-hover:bg-black/30 group-hover:opacity-100">
+                        <i class="text-sm text-white fa-solid fa-magnifying-glass-plus"></i>
+                    </span>
+                </button>
 
                 <div class="flex-1 min-w-0">
                     <div class="text-xs font-bold text-slate-800">ลำดับที่ {{ i + 1 }}</div>
