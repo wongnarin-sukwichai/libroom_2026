@@ -84,9 +84,10 @@ members    (login ด้วย Google OAuth, มี code สำหรับ kios
 holidays   (วันหยุดนักขัตฤกษ์)
 kiosk_bypass_codes  (รหัสพิเศษสำหรับเจ้าหน้าที่ ผ่านได้ตลอด)
 settings   (key–value config ทั้งระบบ)
-  ├── booking_window_enabled  '1' = จำกัดเวลาเปิดจอง, '0' = ไม่จำกัด
-  ├── booking_open_time       เวลาเปิดให้กดจอง เช่น "06:00"
-  └── booking_close_time      เวลาปิดรับจอง เช่น "19:00"
+  ├── booking_window_enabled     '1' = จำกัดเวลาเปิดจอง, '0' = ไม่จำกัด
+  ├── booking_open_time          เวลาเปิดให้กดจอง เช่น "06:00"
+  ├── booking_close_time         เวลาปิดรับจอง เช่น "19:00"
+  └── member_daily_quota_hours   เพดานรวมทุก zone ต่อคนต่อวัน (default 3) — ดู App\Support\Quota
 ```
 
 **ENV เพิ่ม (patron):** `PATRON_API_URL`, `PATRON_API_TOKEN` (ส่งเป็น query param `?token=`)
@@ -97,7 +98,12 @@ settings   (key–value config ทั้งระบบ)
 
 - **Booking date**: จองได้เฉพาะ **วันนี้เท่านั้น** (date ถูก lock ที่ today จาก server)
 - **Booking window**: กดจองได้เฉพาะช่วง `booking_open_time`–`booking_close_time` (global, อ้างอิงเวลา server Asia/Bangkok) — บังคับที่ `BookingController@store` ผ่าน `App\Support\BookingWindow`; staff/admin ใช้ `/admin/bookings/staff` จึงไม่ติด gate นี้; การ join session ที่ leader สร้างไว้แล้วไม่ถูกบล็อก
-- **Quota**: 1 user จองได้ไม่เกิน `zone_daily_quota` ชั่วโมง/วัน/zone (ส่วนใหญ่ = 3 ชม.)
+- **Quota (2 ชั้น, เช็คพร้อมกันเสมอผ่าน `App\Support\Quota`)**:
+  - **Global**: 1 user จองได้ไม่เกิน `settings.member_daily_quota_hours` ชั่วโมง/วัน **รวมทุก zone** (default 3) — นับรวมทั้งที่เป็น leader และที่ join คนอื่น
+  - **Zone**: ซ้อนอยู่ภายในเพดาน global — 1 user จองได้ไม่เกิน `zone_daily_quota` ชั่วโมง/วัน **ในโซนนั้น** (ส่วนใหญ่ = 3 ชม., เช่น zone คาราโอเกะ = 1 ชม.) ใช้ครบใน zone ที่จำกัดไว้ ยังเหลือสิทธิ์ไปใช้ zone อื่นได้ตามเพดาน global ที่เหลือ
+  - คืนสิทธิ์ทันทีที่ยกเลิก ไม่ว่าจะยกเลิกโดยสมาชิกเอง เจ้าหน้าที่ หรือระบบ (cron)
+  - Staff booking (`AdminBookingController@staffStore`, source=staff) ไม่ผูก `bookings.user_id` จึงไม่กินโควตาใครทั้งนั้น
+- **กันจองซ้อน (time conflict)**: 1 user ห้ามมี booking active มากกว่า 1 ที่ในช่วงเวลา (date+time_id) เดียวกัน ไม่ว่าจะคนละห้อง/คนละ zone — เช็คผ่าน `Quota::hasTimeConflict()` ที่ `BookingController@store`/`@join` และ `ScanBookController@show`/`@book` (แสดง state `busy_self` ตอนสแกน QR ถ้าตัวเองมี booking ที่อื่นอยู่แล้วชั่วโมงนี้)
 - **Time slots**: generate จาก times config → 1 ชั่วโมงต่อ slot, ไม่กรอง past slots
 - **Weekday/Weekend**: เช็คจากวันที่ → ใช้ time_weekday หรือ time_weekend ของ zone
 - **Booked check**: booking_groups ที่ status IN (pending, waiting_confirm, confirmed) = ไม่ว่าง
@@ -161,7 +167,7 @@ settings   (key–value config ทั้งระบบ)
 | GET/PUT | `/admin/members` | จัดการ members |
 | GET/POST/PUT/DELETE | `/admin/users` | จัดการ admin users |
 | GET/POST/DELETE | `/admin/kiosk-bypass` | จัดการ kiosk bypass codes |
-| GET/PUT | `/admin/settings` | ช่วงเวลาเปิด-ปิดระบบจอง (global) — แท็บ Service Hours |
+| GET/PUT | `/admin/settings` | ช่วงเวลาเปิด-ปิดระบบจอง + โควตารวมทุกโซน/วัน (global) — แท็บ Service Hours |
 | PUT | `/admin/zones/{zone}/scan-prefix` | ตั้ง prefix สำหรับ generate scan_code |
 | POST/PUT | `/admin/rooms/{room}/scan-code` | สร้าง/แก้ scan_code ของห้อง |
 | GET | `/admin/zones/{zone}/qr-sheet` | หน้าพิมพ์ QR ทั้งโซน (Blade) |
@@ -229,6 +235,7 @@ settings   (key–value config ทั้งระบบ)
 | `app/Http/Controllers/BookingController.php` | slots, store, myBookings, cancel, join |
 | `app/Http/Controllers/KioskController.php` | Kiosk access check |
 | `app/Support/BookingWindow.php` | Logic ช่วงเวลาเปิด-ปิดระบบจอง (อ่านจาก `settings`) |
+| `app/Support/Quota.php` | Logic โควตา 2 ชั้น (global + zone) + กันจองซ้อนเวลาเดียวกัน — ใช้ร่วมกันใน store/join/scan-book |
 | `app/Http/Controllers/Admin/AdminSettingController.php` | GET/PUT `/admin/settings` |
 | `app/Http/Controllers/Admin/` | Admin controllers ทั้งหมด |
 | `app/Http/Controllers/Auth/GoogleController.php` | Google OAuth (+ `defer()` เรียก PatronService หลัง login) |

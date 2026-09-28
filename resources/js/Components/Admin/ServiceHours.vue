@@ -26,8 +26,9 @@ interface BookingWindow {
     close: string;
     is_open_now: boolean;
     server_time: string;
+    member_daily_quota_hours: number;
 }
-const bw         = ref<BookingWindow>({ enabled: true, open: '06:00', close: '19:00', is_open_now: true, server_time: '' });
+const bw         = ref<BookingWindow>({ enabled: true, open: '06:00', close: '19:00', is_open_now: true, server_time: '', member_daily_quota_hours: 3 });
 const bwLoading  = ref(false);
 const bwSaving   = ref(false);
 const bwError    = ref('');
@@ -48,9 +49,10 @@ async function saveWindow() {
     bwSaving.value = true;
     try {
         const res = await axios.put('/admin/settings', {
-            booking_window_enabled: bw.value.enabled,
-            booking_open_time:      bw.value.open,
-            booking_close_time:     bw.value.close,
+            booking_window_enabled:   bw.value.enabled,
+            booking_open_time:        bw.value.open,
+            booking_close_time:       bw.value.close,
+            member_daily_quota_hours: bw.value.member_daily_quota_hours,
         });
         bw.value = res.data;
         Swal.fire({ title: 'บันทึกแล้ว', icon: 'success', timer: 1200, showConfirmButton: false });
@@ -191,6 +193,16 @@ onMounted(() => { fetchWindow(); fetchTimes(); });
                         <input v-model="bw.close" type="time" required :disabled="!bw.enabled"
                             class="w-full text-xs px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400" />
                     </div>
+                </div>
+
+                <div class="max-w-xs">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">โควตาการจองรวมทุกโซน (ชม./คน/วัน)</label>
+                    <input v-model.number="bw.member_daily_quota_hours" type="number" min="1" max="24" required
+                        class="w-full text-xs px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                    <p class="text-[11px] text-slate-400 mt-1">
+                        เพดานรวมของสมาชิก 1 คนต่อวัน นับรวมทุก zone (ทั้งจองเองและ join คนอื่น) —
+                        โควตาเฉพาะ zone (ตั้งที่แท็บพื้นที่) เป็นเพดานย่อยที่ซ้อนอยู่ภายในค่านี้อีกที
+                    </p>
                 </div>
 
                 <div class="flex items-center gap-2 text-[11px]">

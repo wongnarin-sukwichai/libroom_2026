@@ -353,8 +353,10 @@ const bookingForm = ref({
     selectedTimeIds: [],
     terms:           false,
 });
-const usedHoursToday = ref(0);
-const dailyQuota     = ref(3);
+const usedHoursToday  = ref(0);
+const dailyQuota      = ref(3);
+const globalUsedHours = ref(0);
+const globalDailyQuota = ref(3);
 
 // โซนที่ห้องเยอะ → แสดงเป็น grid ปุ่มเล็กแทนการ์ดเต็ม
 const COMPACT_ROOM_THRESHOLD = 6;
@@ -377,8 +379,9 @@ const initiateBooking = (zone) => {
     bookingForm.value  = { date: props.todayDate, selectedTimeIds: [], terms: false };
     availableTimes.value = [];
     bookedTimeIds.value  = [];
-    usedHoursToday.value = 0;
-    bookingWindow.value  = null;
+    usedHoursToday.value  = 0;
+    globalUsedHours.value = 0;
+    bookingWindow.value   = null;
     openModal("booking");
 };
 
@@ -398,6 +401,8 @@ const fetchSlots = async () => {
         bookedTimeIds.value               = data.booked_ids;
         usedHoursToday.value              = data.used_hours  ?? 0;
         dailyQuota.value                  = data.daily_quota ?? 3;
+        globalUsedHours.value             = data.global_used_hours  ?? 0;
+        globalDailyQuota.value            = data.global_daily_quota ?? 3;
         bookingWindow.value               = data.booking_window ?? null;
         bookingForm.value.selectedTimeIds = [];
     } catch (e) {
@@ -410,8 +415,11 @@ const fetchSlots = async () => {
 
 watch(selectedRoom, () => fetchSlots());
 
-const totalQuota = computed(() => dailyQuota.value);
-const quota      = computed(() => Math.max(0, totalQuota.value - usedHoursToday.value));
+const totalQuota    = computed(() => dailyQuota.value);
+const zoneRemaining = computed(() => Math.max(0, totalQuota.value - usedHoursToday.value));
+const globalRemaining = computed(() => Math.max(0, globalDailyQuota.value - globalUsedHours.value));
+// เพดานที่ใช้จริง = ค่าน้อยกว่าระหว่างโควตาเฉพาะโซน กับโควตารวมทุกโซน
+const quota = computed(() => Math.min(zoneRemaining.value, globalRemaining.value));
 
 const getSlotState = (timeId) => {
     if (bookedTimeIds.value.includes(timeId)) return 'booked';
@@ -707,7 +715,7 @@ const hideToast = () => {
         </header>
 
         <!-- ฮีโร่ (สไลด์) -->
-        <section class="relative w-full overflow-hidden bg-slate-950 aspect-[1600/600] max-h-[380px]"
+        <section class="relative w-full overflow-hidden bg-slate-950 aspect-[1920/400]"
             @mouseenter="pauseBanner" @mouseleave="resumeBanner">
             <div v-for="(slide, i) in bannerSlides" :key="slide.image"
                 class="absolute inset-0 transition-opacity duration-700 ease-in-out bg-center bg-no-repeat bg-contain"
@@ -823,7 +831,7 @@ const hideToast = () => {
                         ]"
                     >
                         <div class="h-40 overflow-hidden bg-slate-100">
-                            <img :src="`/imgs/locations/${i + 1}.jpg`" :alt="locTitle(loc)"
+                            <img v-if="loc.pic" :src="`/imgs/locations/${loc.pic}`" :alt="locTitle(loc)"
                                 class="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105" />
                         </div>
                         <div class="flex items-start justify-between gap-2 p-4">
@@ -1093,25 +1101,25 @@ const hideToast = () => {
         <Transition name="fade">
         <div
             v-if="showCookieConsent"
-            class="fixed inset-x-0 bottom-0 z-50 p-4 text-white border-t shadow-2xl bg-slate-900/95 backdrop-blur-md border-slate-800"
+            class="fixed inset-x-0 bottom-0 z-50 p-4 text-white border-t shadow-2xl bg-amber-400 backdrop-blur-md border-amber-300"
         >
             <div
                 class="flex flex-col items-center justify-between gap-4 mx-auto max-w-7xl md:flex-row"
             >
                 <div class="flex items-start gap-3">
                     <div
-                        class="bg-amber-500/10 text-amber-400 p-2 rounded-lg mt-0.5"
+                        class="bg-slate-900 text-amber-400 p-2 rounded-lg mt-0.5"
                     >
                         <i class="text-lg fa-solid fa-cookie-bite"></i>
                     </div>
                     <div>
                         <h4
-                            class="text-sm font-bold text-slate-100 font-prompt"
+                            class="text-sm font-bold text-slate-900 font-prompt"
                         >
                             {{ t("cookieTitle") }}
                         </h4>
                         <p
-                            class="max-w-4xl mt-1 text-xs leading-relaxed text-slate-400"
+                            class="max-w-4xl mt-1 text-xs leading-relaxed text-slate-800"
                         >
                             {{ t("cookieDesc") }}
                         </p>
@@ -1122,7 +1130,7 @@ const hideToast = () => {
                 >
                     <button
                         @click="handleCookieConsent('declined')"
-                        class="w-1/2 px-4 py-2 text-xs font-semibold transition-all border rounded-lg border-slate-700 hover:border-slate-500 text-slate-300 md:w-auto"
+                        class="w-1/2 px-4 py-2 text-xs font-semibold transition-all border rounded-lg border-slate-700 hover:bg-white hover:border-white text-slate-900 md:w-auto"
                     >
                         {{ t("cookieDecline") }}
                     </button>
@@ -1708,12 +1716,12 @@ const hideToast = () => {
                             <div class="flex items-center justify-between mb-2">
                                 <label class="text-xs font-bold text-slate-700">
                                     เลือกช่วงเวลา
-                                    <span v-if="usedHoursToday > 0"
+                                    <span v-if="usedHoursToday > 0 || globalUsedHours > 0"
                                         class="ml-1.5 font-normal text-amber-600">
-                                        (ใช้ไป {{ usedHoursToday }}/{{ totalQuota }} ชม. ในโซนนี้ — เหลือ {{ quota }} ชม.)
+                                        (ใช้ไป {{ usedHoursToday }}/{{ totalQuota }} ชม. ในโซนนี้ · รวมวันนี้ {{ globalUsedHours }}/{{ globalDailyQuota }} ชม. — เหลือ {{ quota }} ชม.)
                                     </span>
                                     <span v-else class="ml-1.5 font-normal text-slate-400">
-                                        (สูงสุด {{ totalQuota }} ชม./วัน ในโซนนี้)
+                                        (สูงสุด {{ Math.min(totalQuota, globalDailyQuota) }} ชม./วัน)
                                     </span>
                                 </label>
                                 <div class="flex items-center gap-3 text-[10px] text-slate-500">
@@ -1736,7 +1744,11 @@ const hideToast = () => {
                                 class="py-6 text-center border border-dashed rounded-lg border-amber-200 bg-amber-50">
                                 <i class="mb-1 text-base fa-solid fa-circle-exclamation text-amber-400"></i>
                                 <div class="text-xs font-bold text-amber-700">โควต้าการจองหมดแล้ว</div>
-                                <div class="text-[11px] text-amber-500 mt-0.5">คุณใช้ครบ {{ totalQuota }} ชม./วัน ในโซนนี้แล้ว</div>
+                                <div class="text-[11px] text-amber-500 mt-0.5">
+                                    {{ zoneRemaining <= 0
+                                        ? `คุณใช้ครบ ${totalQuota} ชม./วัน ในโซนนี้แล้ว`
+                                        : `คุณใช้ครบโควตารวมทุกโซนแล้ว (${globalDailyQuota} ชม./วัน)` }}
+                                </div>
                             </div>
 
                             <!-- Loading -->

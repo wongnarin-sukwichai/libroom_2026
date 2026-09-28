@@ -14,18 +14,21 @@ class LocationSeeder extends Seeder
     {
         $data = [
             [
+                'pic'       => '1.png',
                 'title'     => 'อาคารวิทยบริการ A',
                 'title_eng' => 'Academic Resources Building A',
                 'detail'    => 'พื้นที่ให้บริการทรัพยากรสารสนเทศ พื้นที่นั่งอ่านหนังสือ ห้องเรียนรู้กลุ่ม/เดี่ยว เน้นความเงียบสงบ เพื่อการทบทวนตำรา',
                 'status'    => '0',
             ],
             [
+                'pic'       => '2.jpg',
                 'title'     => 'อาคารวิทยบริการ B',
                 'title_eng' => 'Academic Resources Building B',
                 'detail'    => 'พื้นที่สร้างสรรค์สุดผ่อนคลาย ห้องฉายภาพยนต์ ทีวีออนไลน์ Netflix E-Sport Zone',
                 'status'    => '0',
             ],
             [
+                'pic'       => '3.jpg',
                 'title'     => 'MSU SPACE',
                 'title_eng' => 'MSU SPACE',
                 'detail'    => 'ห้องประชุมส่วนตัวรองรับกลุ่มใหญ่ที่ต้องการสัมมนาหรืองานนำเสนอระดับคณะ/หน่วยงาน',
@@ -37,6 +40,7 @@ class LocationSeeder extends Seeder
             Location::updateOrCreate(
                 ['title' => $r['title']],
                 [
+                    'pic'       => $r['pic'],
                     'title_eng' => $r['title_eng'],
                     'detail'    => $r['detail'],
                     'status'    => $r['status'],

@@ -40,6 +40,7 @@ const STATE = {
     not_found:          { icon: "fa-link-slash",       color: "text-slate-400", title: "ไม่พบ QR นี้ในระบบ",        desc: "โค้ดบนสติกเกอร์อาจไม่ถูกต้อง หรือจุดนี้ถูกยกเลิกแล้ว" },
     room_closed:        { icon: "fa-ban",              color: "text-red-500",   title: "จุดนี้งดให้บริการชั่วคราว",  desc: "กรุณาเลือกจุดอื่น หรือติดต่อเจ้าหน้าที่" },
     busy:              { icon: "fa-user-clock",        color: "text-amber-500", title: "จุดนี้มีคนใช้อยู่",          desc: "ช่วงเวลานี้ถูกจองแล้ว ลองสแกนจุดอื่นที่ว่าง" },
+    busy_self:         { icon: "fa-circle-exclamation",color: "text-amber-500", title: "คุณมีการจองอยู่แล้วตอนนี้",  desc: "คุณจองช่วงเวลานี้ไว้ที่จุดอื่นแล้ว ไม่สามารถจองซ้อนกันได้" },
     window_closed:      { icon: "fa-clock",            color: "text-orange-500",title: "อยู่นอกเวลาทำการจอง",       desc: "" },
     holiday:           { icon: "fa-calendar-xmark",    color: "text-red-500",   title: "งดให้บริการวันนี้",          desc: "เนื่องในวันหยุด กรุณากลับมาในวันทำการ" },
     quota_exceeded:    { icon: "fa-circle-exclamation",color: "text-amber-500", title: "ใช้โควตาโซนนี้ครบแล้ว",      desc: "คุณจองครบชั่วโมงสูงสุดต่อวันในโซนนี้แล้ว" },

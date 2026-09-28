@@ -10,6 +10,7 @@ use App\Models\Room;
 use App\Models\ScanLog;
 use App\Models\Time;
 use App\Support\BookingWindow;
+use App\Support\Quota;
 use App\Support\ScanCheckin;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -70,7 +71,13 @@ class ScanBookController extends Controller
             ]);
         }
 
-        // 2. คนอื่นจองชั่วโมงนี้
+        // 2. ตัวเองมี booking active อยู่แล้วช่วงเวลานี้ที่ห้อง/จุดอื่น (กันจองซ้อน)
+        if (Quota::hasTimeConflict($member->id, $now->toDateString(), [$now->hour])) {
+            ScanLog::record($code, $room->id, $member->id, 'busy_self');
+            return inertia('ScanBook', ['scanCode' => $code, 'state' => 'busy_self', 'room' => $roomPayload]);
+        }
+
+        // 3. คนอื่นจองชั่วโมงนี้
         $takenNow = BookingGroup::where('room_id', $room->id)
             ->where('date', $now->toDateString())
             ->where('time_id', $now->hour)
@@ -82,7 +89,7 @@ class ScanBookController extends Controller
             return inertia('ScanBook', ['scanCode' => $code, 'state' => 'busy', 'room' => $roomPayload]);
         }
 
-        // 3. gate: booking window / holiday
+        // 4. gate: booking window / holiday
         $window = BookingWindow::status();
         if (! $window['is_open_now']) {
             ScanLog::record($code, $room->id, $member->id, 'window_closed');
@@ -93,7 +100,7 @@ class ScanBookController extends Controller
             return inertia('ScanBook', ['scanCode' => $code, 'state' => 'holiday', 'room' => $roomPayload]);
         }
 
-        // 4. ว่าง → หน้าจอง
+        // 5. ว่าง → หน้าจอง
         $zone      = $room->zone;
         $curHour   = $now->hour;
         $endHour   = $this->zoneEndHour($zone, $now);
@@ -111,8 +118,10 @@ class ScanBookController extends Controller
             $slots[] = ['time_id' => $h, 'label' => sprintf('%02d:00–%02d:00', $h, $h + 1)];
         }
 
-        $zoneQuota = $zone->zone_daily_quota ?? 3;
-        $quotaLeft = max(0, $zoneQuota - $this->zoneUsedHours($member->id, $zone->id, $now->toDateString()));
+        $zoneQuota   = $zone->zone_daily_quota ?? 3;
+        $zoneLeft    = max(0, $zoneQuota - Quota::usedHours($member->id, $now->toDateString(), $zone->id));
+        $globalLeft  = max(0, Quota::dailyLimit() - Quota::usedHours($member->id, $now->toDateString()));
+        $quotaLeft   = min($zoneLeft, $globalLeft);
 
         if ($quotaLeft <= 0 || empty($slots)) {
             ScanLog::record($code, $room->id, $member->id, $quotaLeft <= 0 ? 'quota_exceeded' : 'error');
@@ -178,10 +187,11 @@ class ScanBookController extends Controller
                     }
                 }
 
-                $zoneQuota = $zone->zone_daily_quota ?? 3;
-                if ($this->zoneUsedHours($member->id, $zone->id, $date) + count($timeIds) > $zoneQuota) {
-                    throw new \RuntimeException('quota');
+                if (Quota::hasTimeConflict($member->id, $date, $timeIds)) {
+                    throw new \RuntimeException('time_conflict');
                 }
+
+                Quota::assertCanBook($member->id, $date, $zone->id, $zone->zone_daily_quota ?? 3, count($timeIds));
 
                 foreach ($timeIds as $t) {
                     $g = BookingGroup::create([
@@ -213,19 +223,6 @@ class ScanBookController extends Controller
     {
         $cfgId = $now->isWeekend() ? ($zone->time_weekend ?? null) : ($zone->time_weekday ?? null);
         return (int) (Time::find($cfgId)?->end_hour ?? 19);
-    }
-
-    private function zoneUsedHours(int $memberId, int $zoneId, string $date): int
-    {
-        return (int) DB::table('bookings')
-            ->join('booking_groups', 'bookings.group_id', '=', 'booking_groups.id')
-            ->join('rooms', 'rooms.id', '=', 'booking_groups.room_id')
-            ->where('bookings.user_id', $memberId)
-            ->where('booking_groups.date', $date)
-            ->where('rooms.zone_id', $zoneId)
-            ->whereIn('booking_groups.status', ['pending', 'waiting_confirm', 'confirmed'])
-            ->whereNotIn('bookings.status', ['cancelled'])
-            ->count();
     }
 
     private function sessionInfo(Room $room, Member $member, Carbon $now): ?array

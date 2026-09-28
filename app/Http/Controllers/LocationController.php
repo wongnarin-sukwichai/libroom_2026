@@ -53,7 +53,7 @@ class LocationController extends Controller
     /** โครงสร้าง location→zone→room + อุปกรณ์ (ใช้ร่วมกันระหว่าง index / indexTest) */
     private function loadLocationsTree()
     {
-        $data = Location::select('id', 'title', 'title_eng', 'detail', 'status')
+        $data = Location::select('id', 'pic', 'title', 'title_eng', 'detail', 'status')
             ->with(['zones' => fn($q) => $q
                 ->select('id', 'loc_id', 'pic', 'icon', 'title', 'title_eng', 'detail', 'capacity', 'tool', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'status')
                 ->with([

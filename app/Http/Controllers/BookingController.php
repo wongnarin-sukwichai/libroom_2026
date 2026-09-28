@@ -8,6 +8,7 @@ use App\Models\Holiday;
 use App\Models\Room;
 use App\Models\Time;
 use App\Support\BookingWindow;
+use App\Support\Quota;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -40,26 +41,22 @@ class BookingController extends Controller
             ->pluck('time_id')
             ->toArray();
 
-        $zoneQuota = $zone->zone_daily_quota ?? 3;
-        $usedHours = 0;
+        $zoneQuota  = $zone->zone_daily_quota ?? 3;
+        $usedHours  = 0;
+        $globalUsed = 0;
         if (Auth::check()) {
-            $usedHours = DB::table('bookings')
-                ->join('booking_groups', 'bookings.group_id', '=', 'booking_groups.id')
-                ->join('rooms', 'rooms.id', '=', 'booking_groups.room_id')
-                ->where('bookings.user_id', Auth::id())
-                ->where('booking_groups.date', $date)
-                ->where('rooms.zone_id', $zone->id)
-                ->whereIn('booking_groups.status', ['pending', 'waiting_confirm', 'confirmed'])
-                ->whereNotIn('bookings.status', ['cancelled'])
-                ->count();
+            $usedHours  = Quota::usedHours(Auth::id(), $date, $zone->id);
+            $globalUsed = Quota::usedHours(Auth::id(), $date);
         }
 
         return response()->json([
-            'times'          => $times,
-            'booked_ids'     => $bookedIds,
-            'used_hours'     => $usedHours,
-            'daily_quota'    => $zoneQuota,
-            'booking_window' => BookingWindow::status(),
+            'times'              => $times,
+            'booked_ids'         => $bookedIds,
+            'used_hours'         => $usedHours,
+            'daily_quota'        => $zoneQuota,
+            'global_used_hours'  => $globalUsed,
+            'global_daily_quota' => Quota::dailyLimit(),
+            'booking_window'     => BookingWindow::status(),
         ]);
     }
 
@@ -198,19 +195,11 @@ class BookingController extends Controller
                     if ($taken) throw new \Exception('slot_taken');
                 }
 
-                $usedHours = DB::table('bookings')
-                    ->join('booking_groups', 'bookings.group_id', '=', 'booking_groups.id')
-                    ->join('rooms', 'rooms.id', '=', 'booking_groups.room_id')
-                    ->where('bookings.user_id', $member->id)
-                    ->where('booking_groups.date', $date)
-                    ->where('rooms.zone_id', $zone->id)
-                    ->whereIn('booking_groups.status', ['pending', 'waiting_confirm', 'confirmed'])
-                    ->whereNotIn('bookings.status', ['cancelled'])
-                    ->count();
-
-                if ($usedHours + count($timeIds) > $zoneQuota) {
-                    throw new \Exception('quota_exceeded');
+                if (Quota::hasTimeConflict($member->id, $date, $timeIds)) {
+                    throw new \Exception('time_conflict');
                 }
+
+                Quota::assertCanBook($member->id, $date, $zone->id, $zoneQuota, count($timeIds));
 
                 $isAuto      = $room->confirm_type === 'auto';
                 $minCapacity = $zone->min_capacity ?? 1;
@@ -273,9 +262,11 @@ class BookingController extends Controller
 
         } catch (\Exception $e) {
             $msg = match ($e->getMessage()) {
-                'slot_taken'     => 'เสียใจด้วย ช่วงเวลานี้ถูกจองไปแล้ว',
-                'quota_exceeded' => "เกินโควต้าการจอง ({$zoneQuota} ชม./วัน ในโซนนี้)",
-                default          => 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง',
+                'slot_taken'           => 'เสียใจด้วย ช่วงเวลานี้ถูกจองไปแล้ว',
+                'time_conflict'        => 'คุณมีการจองอยู่แล้วในช่วงเวลานี้ (ห้อง/โซนอื่น) ไม่สามารถจองซ้อนกันได้',
+                'zone_quota_exceeded'  => "เกินโควต้าการจอง ({$zoneQuota} ชม./วัน ในโซนนี้)",
+                'daily_quota_exceeded' => 'เกินโควต้าการจองรวมทุกโซน (' . Quota::dailyLimit() . ' ชม./วัน)',
+                default                => 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง',
             };
             return response()->json(['message' => $msg], 422);
         }
@@ -381,20 +372,19 @@ class BookingController extends Controller
 
                 if ($member->id === $group->lead_user_id) throw new \Exception('already_joined');
 
-                // เช็ค quota per zone (join กินโควต้าด้วย)
-                $usedHours = DB::table('bookings')
-                    ->join('booking_groups', 'bookings.group_id', '=', 'booking_groups.id')
-                    ->join('rooms', 'rooms.id', '=', 'booking_groups.room_id')
-                    ->where('bookings.user_id', $member->id)
-                    ->where('booking_groups.date', $group->date->format('Y-m-d'))
-                    ->where('rooms.zone_id', $joinZone->id)
-                    ->whereIn('booking_groups.status', ['pending', 'waiting_confirm', 'confirmed'])
-                    ->whereNotIn('bookings.status', ['cancelled'])
-                    ->count();
-
-                if ($usedHours + $siblings->count() > $zoneQuota) {
-                    throw new \Exception('quota_exceeded');
+                // กันจองซ้อน — ห้ามมี booking ของตัวเองที่ห้อง/โซนอื่นในช่วงเวลาเดียวกัน
+                if (Quota::hasTimeConflict($member->id, $group->date->format('Y-m-d'), $siblings->pluck('time_id')->all())) {
+                    throw new \Exception('time_conflict');
                 }
+
+                // เช็ค quota per zone + รวมทุกโซน (join กินโควต้าด้วยเหมือนกัน)
+                Quota::assertCanBook(
+                    $member->id,
+                    $group->date->format('Y-m-d'),
+                    $joinZone->id,
+                    $zoneQuota,
+                    $siblings->count()
+                );
 
                 // join ทุก slot ในเซสชัน
                 foreach ($siblings as $g) {
@@ -420,9 +410,11 @@ class BookingController extends Controller
 
         } catch (\Exception $e) {
             $msg = match ($e->getMessage()) {
-                'already_joined'  => 'คุณอยู่ในกลุ่มนี้แล้ว',
-                'quota_exceeded'  => "เกินโควต้าการจอง ({$zoneQuota} ชม./วัน ในโซนนี้)",
-                default           => 'เกิดข้อผิดพลาด กรุณาลองใหม่',
+                'already_joined'       => 'คุณอยู่ในกลุ่มนี้แล้ว',
+                'time_conflict'        => 'คุณมีการจองอยู่แล้วในช่วงเวลานี้ (ห้อง/โซนอื่น) ไม่สามารถ join ซ้อนกันได้',
+                'zone_quota_exceeded'  => "เกินโควต้าการจอง ({$zoneQuota} ชม./วัน ในโซนนี้)",
+                'daily_quota_exceeded' => 'เกินโควต้าการจองรวมทุกโซน (' . Quota::dailyLimit() . ' ชม./วัน)',
+                default                => 'เกิดข้อผิดพลาด กรุณาลองใหม่',
             };
             return response()->json(['message' => $msg], 422);
         }
