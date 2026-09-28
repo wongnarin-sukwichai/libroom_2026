@@ -38,7 +38,7 @@ class LocationController extends Controller
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get(['id', 'image_path'])
-            ->map(fn ($b) => ['image' => '/storage/' . $b->image_path])
+            ->map(fn ($b) => ['image' => asset('imgs/banner/' . $b->image_path)])
             ->values();
 
         return inertia($component, [

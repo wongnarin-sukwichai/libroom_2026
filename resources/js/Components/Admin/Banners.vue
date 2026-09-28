@@ -108,6 +108,14 @@ onMounted(() => fetchBanners());
 
 <template>
     <div class="space-y-4">
+        <div class="flex items-start gap-3 p-4 border-2 border-red-300 bg-red-50 rounded-2xl">
+            <i class="mt-0.5 text-lg text-red-500 fa-solid fa-triangle-exclamation shrink-0"></i>
+            <div class="text-xs text-red-700">
+                เนื่องจากระบบป้องกันของ Cloudflare บล็อกการส่งข้อมูล ทำให้ไม่สามารถอัปโหลด/แก้ไขแบนเนอร์
+                <span class="font-bold">กรุณาติดต่อผู้พัฒนาระบบ</span> เพื่อดำเนินการเพิ่มแบนเนอร์
+            </div>
+        </div>
+
         <div class="flex items-center justify-between">
             <div>
                 <h3 class="text-sm font-bold text-slate-900">แบนเนอร์หน้าแรก (สไลด์)</h3>
