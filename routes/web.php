@@ -76,6 +76,7 @@ Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/zones/{zone}/toggle',               [AdminRoomController::class, 'toggleZone']);
     Route::post('/admin/rooms/{room}/toggle',               [AdminRoomController::class, 'toggleRoom']);
     Route::post('/admin/rooms/{room}/toggle-access',        [AdminRoomController::class, 'toggleRoomAccessControl']);
+    Route::post('/admin/rooms/{room}/toggle-confirm-type',  [AdminRoomController::class, 'toggleRoomConfirmType']);
     Route::put('/admin/zones/{zone}/settings',              [AdminRoomController::class, 'updateZoneSettings']);
     Route::put('/admin/zones/{zone}/tools',                 [AdminRoomController::class, 'updateZoneTools']);
     Route::put('/admin/rooms/{room}/tools',                 [AdminRoomController::class, 'updateRoomTools']);

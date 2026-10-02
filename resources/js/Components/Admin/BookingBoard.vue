@@ -32,12 +32,13 @@ interface DayData {
 }
 type Summary = Record<number, { pending: number; booked: number }>;
 
+const props = defineProps<{ date: string }>();
+
 const todayStr = () => new Date().toISOString().split("T")[0];
 
 const locations   = ref<BLoc[]>([]);
 const activeLoc   = ref<BLoc | null>(null);
 const selectedRoom = ref<BRoom | null>(null);
-const date        = ref(todayStr());
 const summary     = ref<Summary>({});
 const day         = ref<DayData | null>(null);
 const loadingTree = ref(false);
@@ -78,7 +79,7 @@ async function fetchTree() {
 
 async function fetchSummary() {
     try {
-        const { data } = await axios.get("/admin/bookings/board-summary", { params: { date: date.value } });
+        const { data } = await axios.get("/admin/bookings/board-summary", { params: { date: props.date } });
         summary.value = data;
     } catch { summary.value = {}; }
 }
@@ -88,7 +89,7 @@ async function fetchDay() {
     loadingDay.value = true;
     try {
         const { data } = await axios.get("/admin/bookings/room-day", {
-            params: { room_id: selectedRoom.value.id, date: date.value },
+            params: { room_id: selectedRoom.value.id, date: props.date },
         });
         day.value = data;
     } finally {
@@ -108,20 +109,24 @@ function backToGrid() {
     slotModal.value = null;
 }
 
-watch(date, () => {
+watch(() => props.date, () => {
     fetchSummary();
     if (selectedRoom.value) fetchDay();
 });
 
-const roomDot = (room: BRoom) => {
-    if (room.status === "1") return { cls: "bg-slate-200", label: "ปิด" };
+// สถานะห้อง (ใช้ทั้งจุดสี badge ไอคอน และสีตัวหนังสือในการ์ด)
+const roomStatus = (room: BRoom) => {
+    if (room.status === "1")
+        return { dot: "bg-slate-300", label: "ปิด",       badgeBg: "bg-slate-100", icon: "text-slate-400", text: "text-slate-400" };
     const s = summary.value[room.id];
-    if (s?.pending) return { cls: "bg-amber-400", label: `รอ ${s.pending}` };
-    if (s?.booked)  return { cls: "bg-blue-500",  label: `จอง ${s.booked}` };
-    return { cls: "bg-slate-200", label: "ว่าง" };
+    if (s?.pending)
+        return { dot: "bg-amber-400", label: "รอยืนยัน", badgeBg: "bg-amber-100", icon: "text-amber-500", text: "text-amber-600" };
+    if (s?.booked)
+        return { dot: "bg-blue-500",  label: "มีจอง",     badgeBg: "bg-blue-100",  icon: "text-blue-500",  text: "text-blue-600" };
+    return { dot: "bg-slate-300", label: "ว่าง", badgeBg: "bg-slate-100", icon: "text-slate-400", text: "text-slate-500" };
 };
 
-const isToday = computed(() => date.value === todayStr());
+const isToday = computed(() => props.date === todayStr());
 
 // actions ─────────────────────────────────────────────
 const acting = ref(false);
@@ -143,7 +148,7 @@ function canCancel(g: SlotGroup) {
 async function runAction(url: string, g: SlotGroup, confirmText: string, okText: string, color: string, icon: string, withReason = false) {
     const r = await Swal.fire({
         title: confirmText,
-        html: `<div class="text-sm text-left"><b>${day.value?.room.title}</b><br>${fmtDate(date.value)} • ${g.time_label}<br><span class="text-slate-400">${g.lead_name}</span></div>`,
+        html: `<div class="text-sm text-left"><b>${day.value?.room.title}</b><br>${fmtDate(props.date)} • ${g.time_label}<br><span class="text-slate-400">${g.lead_name}</span></div>`,
         icon,
         input: withReason ? "text" : undefined,
         inputPlaceholder: withReason ? "เหตุผล (ไม่บังคับ)" : undefined,
@@ -182,37 +187,13 @@ onMounted(async () => {
 
 <template>
     <div class="space-y-4">
-        <!-- Date + breadcrumb -->
-        <div class="flex flex-wrap items-center gap-3">
-            <div class="relative">
-                <input
-                    :value="fmtDate(date)"
-                    readonly
-                    class="px-3 py-2 text-xs bg-white border cursor-pointer border-slate-200 rounded-xl text-slate-700 w-32 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    @click="($refs.hiddenDate as HTMLInputElement).showPicker()"
-                />
-                <input ref="hiddenDate" v-model="date" type="date"
-                    class="absolute inset-0 opacity-0 pointer-events-none" />
-            </div>
-            <button
-                @click="date = todayStr()"
-                :class="isToday ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'"
-                class="px-3 py-2 text-xs font-bold border rounded-xl transition-colors"
-            >วันนี้</button>
-
-            <div v-if="selectedRoom" class="flex items-center gap-1.5 text-xs text-slate-500 ml-1">
-                <button @click="backToGrid" class="font-bold text-blue-700 hover:underline">
-                    <i class="fa-solid fa-chevron-left text-[10px] mr-1"></i>เลือกห้อง
-                </button>
-                <span class="text-slate-300">/</span>
-                <span class="font-bold text-slate-800">{{ selectedRoom.title }}</span>
-            </div>
-
-            <div class="ml-auto flex items-center gap-3 text-[11px] text-slate-400">
-                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400"></span>มีคำขอรอ</span>
-                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span>มีจอง</span>
-                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-200"></span>ว่าง / ปิด</span>
-            </div>
+        <!-- Breadcrumb (โชว์เฉพาะตอนเลือกห้องแล้ว — วันที่ย้ายไปอยู่แถวเดียวกับปุ่มรายการ/ผังห้องของหน้า Bookings แล้ว) -->
+        <div v-if="selectedRoom" class="flex items-center gap-1.5 text-xs text-slate-500">
+            <button @click="backToGrid" class="font-bold text-blue-700 hover:underline">
+                <i class="fa-solid fa-chevron-left text-[10px] mr-1"></i>เลือกห้อง
+            </button>
+            <span class="text-slate-300">/</span>
+            <span class="font-bold text-slate-800">{{ selectedRoom.title }}</span>
         </div>
 
         <!-- ══ ROOM GRID ══ -->
@@ -221,43 +202,57 @@ onMounted(async () => {
                 <i class="mr-1 fa-solid fa-spinner fa-spin"></i> กำลังโหลด...
             </div>
             <template v-else>
-                <!-- location tabs -->
-                <div v-if="locations.length > 1" class="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl w-fit">
-                    <button
-                        v-for="loc in locations" :key="loc.id"
-                        @click="activeLoc = loc"
-                        :class="activeLoc?.id === loc.id ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
-                        class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all"
-                    >{{ loc.title }}</button>
+                <!-- location tabs (ซ้าย) + legend สถานะห้อง (ขวา) -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <div v-if="locations.length > 1" class="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+                        <button
+                            v-for="loc in locations" :key="loc.id"
+                            @click="activeLoc = loc"
+                            :class="activeLoc?.id === loc.id ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+                            class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all"
+                        >{{ loc.title }}</button>
+                    </div>
+
+                    <div class="flex items-center flex-wrap gap-3 text-[11px] text-slate-400 ml-auto">
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400"></span>มีคำขอรอ</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 bg-blue-500 rounded-full"></span>มีจอง</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-300"></span>ว่าง / ปิด</span>
+                    </div>
                 </div>
 
                 <div v-for="zone in activeLoc?.zones ?? []" :key="zone.id"
-                    class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                    <div class="px-5 py-3 bg-slate-50/60 border-b border-slate-100 flex items-center gap-2">
+                    class="overflow-hidden bg-white border shadow-sm border-slate-200 rounded-2xl">
+                    <div class="flex items-center gap-2 px-5 py-3 border-b bg-slate-50/60 border-slate-100">
                         <span class="text-sm font-bold text-slate-900">{{ zone.title }}</span>
                         <span v-if="zone.status === '1'" class="text-[10px] font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">ปิดโซน</span>
                         <span class="text-[10px] text-slate-400">{{ zone.rooms.length }} ห้อง</span>
                     </div>
-                    <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                         <button
                             v-for="room in zone.rooms" :key="room.id"
                             @click="pickRoom(room)"
-                            class="text-left px-3 py-2.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
+                            class="flex items-center gap-3 p-3 text-left transition-colors bg-white border rounded-2xl border-slate-200 hover:border-blue-300 hover:shadow-md"
                         >
-                            <div class="flex items-center justify-between gap-1">
-                                <span class="text-xs font-bold text-slate-800 truncate">{{ room.title }}</span>
-                                <span class="w-2 h-2 rounded-full shrink-0" :class="roomDot(room).cls"></span>
+                            <div class="flex items-center justify-center w-11 h-11 rounded-xl shrink-0" :class="roomStatus(room).badgeBg">
+                                <i class="text-lg fa-solid fa-door-open" :class="roomStatus(room).icon"></i>
                             </div>
-                            <div class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5">
-                                <span>{{ roomDot(room).label }}</span>
-                                <span v-if="room.access_control === '1'" class="text-indigo-400"><i class="fa-solid fa-qrcode"></i></span>
-                                <span v-if="room.confirm_type === 'manual'" class="text-amber-500">manual</span>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-bold truncate text-slate-800">{{ room.title }}</div>
+                                <div class="text-[11px] mt-0.5 flex items-center gap-1.5" :class="roomStatus(room).text">
+                                    <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="roomStatus(room).dot"></span>
+                                    <span>{{ roomStatus(room).label }}</span>
+                                    <span v-if="room.access_control === '1'" class="hidden text-indigo-400 sm:inline"><i class="fa-solid fa-qrcode"></i></span>
+                                    <span v-if="room.confirm_type === 'manual'" class="hidden sm:inline text-amber-500">manual</span>
+                                </div>
                             </div>
+                            <span class="flex items-center justify-center w-6 h-6 bg-white border rounded-full border-slate-5 shrink-0">
+                                <i class="text-[10px] fa-solid fa-chevron-right text-slate-900"></i>
+                            </span>
                         </button>
                     </div>
                 </div>
 
-                <div v-if="!(activeLoc?.zones?.length)" class="py-14 text-xs text-center text-slate-400">
+                <div v-if="!(activeLoc?.zones?.length)" class="text-xs text-center py-14 text-slate-400">
                     <i class="block mb-2 text-2xl fa-solid fa-inbox"></i>ไม่มีโซนในสถานที่นี้
                 </div>
             </template>
@@ -268,7 +263,7 @@ onMounted(async () => {
             <div v-if="loadingDay" class="py-16 text-xs text-center text-slate-400">
                 <i class="mr-1 fa-solid fa-spinner fa-spin"></i> กำลังโหลด...
             </div>
-            <div v-else-if="day" class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div v-else-if="day" class="overflow-hidden bg-white border shadow-sm border-slate-200 rounded-2xl">
                 <div class="px-5 py-4 border-b border-slate-100">
                     <h3 class="text-sm font-bold text-slate-900">{{ day.room.title }}</h3>
                     <p class="text-[11px] text-slate-400 mt-0.5">
@@ -283,7 +278,7 @@ onMounted(async () => {
                         v-for="slot in day.slots" :key="slot.hour"
                         @click="slot.groups.length && (slotModal = slot)"
                         :disabled="!slot.groups.length"
-                        class="w-full text-left px-5 py-3 flex items-start gap-4 transition-colors"
+                        class="flex items-start w-full gap-4 px-5 py-3 text-left transition-colors"
                         :class="slot.groups.length ? 'hover:bg-slate-50 cursor-pointer' : 'cursor-default'"
                     >
                         <div class="w-28 shrink-0 text-xs font-bold text-slate-700 pt-0.5">{{ slot.label }}</div>
@@ -311,16 +306,16 @@ onMounted(async () => {
         </template>
 
         <!-- ══ SLOT DETAIL MODAL ══ -->
-        <div v-if="slotModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"
+        <div v-if="slotModal" class="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center bg-black/40 sm:p-4"
             @click.self="slotModal = null">
             <div class="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-xl max-h-[85vh] flex flex-col">
-                <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                     <div>
                         <h3 class="text-sm font-bold text-slate-900">{{ day?.room.title }}</h3>
-                        <p class="text-[11px] text-slate-400 mt-0.5">{{ fmtDate(date) }} • {{ slotModal.label }}</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">{{ fmtDate(props.date) }} • {{ slotModal.label }}</p>
                     </div>
                     <button @click="slotModal = null" class="text-slate-400 hover:text-slate-700">
-                        <i class="fa-solid fa-xmark text-lg"></i>
+                        <i class="text-lg fa-solid fa-xmark"></i>
                     </button>
                 </div>
 
@@ -343,7 +338,7 @@ onMounted(async () => {
                         </div>
 
                         <div class="text-[11px] text-slate-500 mt-1.5">
-                            <i class="fa-solid fa-clock text-slate-400 mr-1"></i>{{ g.time_label }}
+                            <i class="mr-1 fa-solid fa-clock text-slate-400"></i>{{ g.time_label }}
                             <span v-if="g.hours > 1" class="text-slate-400">({{ g.hours }} ชม.)</span>
                         </div>
 
@@ -351,8 +346,8 @@ onMounted(async () => {
                         <div class="mt-2.5 border-t border-slate-100 pt-2 space-y-1">
                             <div v-for="(o, j) in g.occupants" :key="j" class="flex items-center gap-2 text-[11px]">
                                 <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="occStatus(o.status).dot"></span>
-                                <span class="text-slate-700 truncate">{{ o.name }}</span>
-                                <span class="text-slate-300 ml-auto">{{ occStatus(o.status).label }}</span>
+                                <span class="truncate text-slate-700">{{ o.name }}</span>
+                                <span class="ml-auto text-slate-300">{{ occStatus(o.status).label }}</span>
                             </div>
                             <div v-if="!g.occupants.length" class="text-[11px] text-slate-300">ยังไม่มีสมาชิก</div>
                         </div>
@@ -361,7 +356,7 @@ onMounted(async () => {
                         <div class="flex flex-wrap gap-1.5 mt-3">
                             <button v-if="canApprove(g)" :disabled="acting" @click="approve(g)"
                                 class="bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] disabled:opacity-50">
-                                <i class="fa-solid fa-check mr-1"></i>อนุมัติ
+                                <i class="mr-1 fa-solid fa-check"></i>อนุมัติ
                             </button>
                             <button v-if="canApprove(g)" :disabled="acting" @click="reject(g)"
                                 class="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-red-200 disabled:opacity-50">
@@ -369,11 +364,11 @@ onMounted(async () => {
                             </button>
                             <button v-if="canCheckin(g)" :disabled="acting" @click="checkin(g)"
                                 class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] disabled:opacity-50">
-                                <i class="fa-solid fa-door-open mr-1"></i>เช็คอิน
+                                <i class="mr-1 fa-solid fa-door-open"></i>เช็คอิน
                             </button>
                             <button v-if="canCancel(g)" :disabled="acting" @click="cancel(g)"
                                 class="bg-white hover:bg-red-50 text-red-500 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-red-200 disabled:opacity-50">
-                                <i class="fa-solid fa-ban mr-1"></i>ยกเลิก
+                                <i class="mr-1 fa-solid fa-ban"></i>ยกเลิก
                             </button>
                             <span v-if="g.status === 'confirmed' && g.checked_in"
                                 class="text-[10px] font-bold text-emerald-600 inline-flex items-center gap-1 px-1 py-1.5">

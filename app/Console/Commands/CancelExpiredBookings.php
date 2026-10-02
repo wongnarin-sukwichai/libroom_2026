@@ -13,12 +13,13 @@ use Illuminate\Support\Facades\Mail;
 class CancelExpiredBookings extends Command
 {
     protected $signature   = 'bookings:cancel-expired';
-    protected $description = 'ยกเลิกกลุ่มจองที่ (1) token หมดอายุ (2) manual ไม่ยืนยันใน 15 นาที (3) mark no_show auto rooms';
+    protected $description = 'ยกเลิกกลุ่มจองที่ (1) token หมดอายุ (2) manual+ไม่มี kiosk ไม่ยืนยันใน 15 นาที (3) มี kiosk ไม่สแกนใน 15 นาที (4) mark no_show';
 
     public function handle(): void
     {
         $this->cancelExpiredPending();
         $this->cancelUnconfirmedManual();
+        $this->cancelUnscannedKiosk();
         $this->markNoShow();
     }
 
@@ -109,6 +110,57 @@ class CancelExpiredBookings extends Command
         });
 
         $this->info("ยกเลิก {$cancelledCount} กลุ่ม (manual ไม่ได้ยืนยันใน 15 นาที) — แจ้ง {$sessions->count()} leader");
+    }
+
+    // --- confirmed + ห้องมี kiosk แต่เลย slot_start + 15 นาที ไม่มีใครสแกนเช็คอินเลยสักคน ---
+    // ครอบทั้ง manual+kiosk (ครบสมาชิกแล้วข้าม waiting_confirm มา confirmed ทันที) และ auto+kiosk (ถ้ามีในอนาคต)
+    // ไม่แตะ staff booking (source=staff, ไม่มี bookings แถวไหนเลย ไม่ใช่กรณีที่ต้องการยกเลิก)
+    private function cancelUnscannedKiosk(): void
+    {
+        $overdue = BookingGroup::with(['room', 'lead'])
+            ->where('status', 'confirmed')
+            ->where('source', '!=', 'staff')
+            ->whereHas('room', fn($q) => $q->where('access_control', '1'))
+            ->whereRaw('TIMESTAMP(date, MAKETIME(time_id, 0, 0)) + INTERVAL 15 MINUTE <= NOW()')
+            ->whereDoesntHave('bookings', fn($q) => $q->where('status', 'checked_in'))
+            ->get();
+
+        if ($overdue->isEmpty()) {
+            return;
+        }
+
+        // จัดกลุ่มเป็น session (lead + room + date) — ยกเลิกทั้ง session เดียวกันพร้อมกัน
+        $sessions = $overdue->groupBy(
+            fn($g) => $g->lead_user_id . '|' . $g->room_id . '|' . $g->date->toDateString()
+        );
+
+        $cancelledCount = 0;
+
+        DB::transaction(function () use ($sessions, &$cancelledCount) {
+            foreach ($sessions as $sessionGroups) {
+                $first = $sessionGroups->first();
+
+                $siblings = BookingGroup::where('status', 'confirmed')
+                    ->where('lead_user_id', $first->lead_user_id)
+                    ->where('room_id', $first->room_id)
+                    ->where('date', $first->date)
+                    ->whereDoesntHave('bookings', fn($q) => $q->where('status', 'checked_in'))
+                    ->get();
+
+                foreach ($siblings as $g) {
+                    $g->update([
+                        'status'        => 'cancelled',
+                        'cancelled_at'  => Carbon::now(),
+                        'cancelled_by'  => 'ระบบ',
+                        'cancel_reason' => 'ไม่สแกน QR ยืนยันภายใน 15 นาทีหลังเวลาเริ่มใช้งาน',
+                    ]);
+                    $g->bookings()->update(['status' => 'cancelled']);
+                    $cancelledCount++;
+                }
+            }
+        });
+
+        $this->info("ยกเลิก {$cancelledCount} กลุ่ม (มี kiosk แต่ไม่สแกนใน 15 นาที)");
     }
 
     // --- slot จบแล้ว แต่ bookings ยัง confirmed (ไม่เคยเช็คอิน) → no_show ---

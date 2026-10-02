@@ -12,7 +12,18 @@ const authUser = computed(() => page.props.auth?.user ?? null);
 const today = new Date().toISOString().split('T')[0];
 
 const upcoming = computed(() => props.bookings.filter(b => b.date >= today && b.status !== 'cancelled'));
-const past     = computed(() => props.bookings.filter(b => b.date < today || b.status === 'cancelled'));
+
+// ประวัติที่ผ่านมา — เอาแค่ 10 รายการล่าสุด (bookings มาจาก backend เรียง date/time_id ล่าสุดก่อนอยู่แล้ว) แบ่งหน้าละ 5
+const PAST_LIMIT    = 10;
+const PAST_PER_PAGE = 5;
+const pastPage = ref(1);
+
+const pastLatest  = computed(() => props.bookings.filter(b => b.date < today || b.status === 'cancelled').slice(0, PAST_LIMIT));
+const pastTotalPages = computed(() => Math.max(1, Math.ceil(pastLatest.value.length / PAST_PER_PAGE)));
+const past = computed(() => {
+    const start = (pastPage.value - 1) * PAST_PER_PAGE;
+    return pastLatest.value.slice(start, start + PAST_PER_PAGE);
+});
 
 const statusConfig = {
     pending:        { label: 'รอการยืนยัน',        color: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -29,7 +40,7 @@ const cancelBooking = async (id, booking) => {
     const result = await Swal.fire({
         title: 'ยืนยันการยกเลิก?',
         html: `<div class="text-sm text-slate-600">
-                <div class="font-bold text-slate-900 mb-1">${booking.room_title}</div>
+                <div class="mb-1 font-bold text-slate-900">${booking.room_title}</div>
                 <div>${booking.time_label} • ${booking.date}</div>
                </div>`,
         icon: 'warning',
@@ -71,52 +82,52 @@ const copyLink = (url) => {
 </script>
 
 <template>
-    <div class="flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
+    <div class="flex flex-col min-h-screen font-sans bg-slate-50 text-slate-800">
 
-        <!-- Top bar -->
-        <div class="px-4 py-2 text-xs text-white bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500">
-            <div class="flex items-center justify-between mx-auto max-w-4xl">
-                <span class="font-semibold text-amber-300">MSU Library — ระบบจองพื้นที่ออนไลน์</span>
-                <div class="flex items-center gap-3">
-                    <span class="text-amber-300"><i class="fa-solid fa-circle-user mr-1"></i>{{ authUser?.name }}</span>
-                    <button @click="handleLogout" class="bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded text-[10px]">ออกจากระบบ</button>
+        <!-- Header (โทนสีเดียวกับหน้าแรก — พื้นเหลือง amber ตัวหนังสือดำ) -->
+        <header class="sticky top-0 z-40 bg-white border-b shadow-sm">
+            <div class="flex items-center justify-between max-w-4xl gap-3 px-4 py-3 mx-auto">
+                <div class="flex items-center min-w-0 gap-3">
+                    <a :href="`${appBase}/`" class="transition-colors text-amber-400 hover:text-amber-300 shrink-0">
+                        <i class="text-sm fa-solid fa-chevron-left"></i>
+                    </a>
+                    <div class="min-w-0">
+                        <h1 class="text-sm font-bold text-amber-400">ประวัติการจองของฉัน</h1>
+                        <p class="text-[11px] text-slate-900">รายการจองทั้งหมดของคุณ</p>
+                    </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Header -->
-        <header class="bg-white border-b border-slate-200 shadow-sm">
-            <div class="flex items-center gap-3 px-4 py-3 mx-auto max-w-4xl">
-                <a :href="`${appBase}/`" class="text-slate-400 hover:text-slate-700 transition-colors">
-                    <i class="fa-solid fa-chevron-left text-sm"></i>
-                </a>
-                <div>
-                    <h1 class="text-sm font-bold text-slate-900">ประวัติการจองของฉัน</h1>
-                    <p class="text-[11px] text-slate-400">รายการจองทั้งหมดของคุณ</p>
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="hidden text-xs font-bold text-slate-900 sm:inline">
+                        <i class="mr-1 fa-solid fa-circle-user text-amber-400"></i>{{ authUser?.name }}
+                    </span>
+                    <button @click="handleLogout"
+                        class="px-3 py-2 text-[11px] font-bold transition-all rounded-lg bg-amber-400/80 hover:bg-amber-200 hover:text-red-600 text-slate-900">
+                        ออกจากระบบ
+                    </button>
                 </div>
             </div>
         </header>
 
-        <main class="flex-1 px-4 py-6 mx-auto w-full max-w-4xl space-y-8">
+        <main class="flex-1 w-full max-w-4xl px-4 py-6 mx-auto space-y-8">
 
             <!-- Upcoming -->
             <section>
-                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                <h2 class="mb-3 text-xs font-bold tracking-wider uppercase text-slate-500">
                     <i class="fa-solid fa-calendar-day mr-1.5"></i>การจองที่กำลังจะมาถึง
                     <span class="ml-1.5 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{{ upcoming.length }}</span>
                 </h2>
 
-                <div v-if="!upcoming.length" class="py-10 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                    <i class="fa-regular fa-calendar text-2xl mb-2 block"></i>
+                <div v-if="!upcoming.length" class="py-10 text-xs text-center border border-dashed text-slate-400 border-slate-200 rounded-xl">
+                    <i class="block mb-2 text-2xl fa-regular fa-calendar"></i>
                     ยังไม่มีการจองที่กำลังจะมาถึง
                 </div>
 
                 <div v-else class="space-y-3">
                     <div v-for="b in upcoming" :key="b.id"
-                        class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-start justify-between gap-3">
+                        class="flex items-start justify-between gap-3 p-4 bg-white border shadow-sm border-slate-200 rounded-xl">
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="font-bold text-sm text-slate-900">{{ b.room_title }}</span>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-sm font-bold text-slate-900">{{ b.room_title }}</span>
                                 <span :class="statusConfig[b.status]?.color"
                                     class="text-[10px] font-semibold px-2 py-0.5 rounded-full border">
                                     {{ statusConfig[b.status]?.label }}
@@ -135,12 +146,12 @@ const copyLink = (url) => {
                                 </div>
                                 <div v-if="b.status === 'pending' && b.member_count < b.min_capacity">
                                     <i class="fa-solid fa-users mr-1.5 text-slate-300"></i>
-                                    <span class="text-amber-600 font-semibold">สมาชิก {{ b.member_count }}/{{ b.min_capacity }} คน</span>
+                                    <span class="font-semibold text-amber-600">สมาชิก {{ b.member_count }}/{{ b.min_capacity }} คน</span>
                                 </div>
                             </div>
 
                             <!-- Join link สำหรับ leader ที่ลืม copy -->
-                            <div v-if="b.join_url" class="mt-2 flex items-center gap-2">
+                            <div v-if="b.join_url" class="flex items-center gap-2 mt-2">
                                 <input :value="b.join_url" readonly
                                     class="flex-1 text-[10px] px-2 py-1 border border-slate-200 rounded bg-slate-50 text-slate-500 truncate" />
                                 <button @click="copyLink(b.join_url)"
@@ -162,21 +173,22 @@ const copyLink = (url) => {
 
             <!-- Past -->
             <section>
-                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                <h2 class="mb-3 text-xs font-bold tracking-wider uppercase text-slate-500">
                     <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>ประวัติที่ผ่านมา
+                    <span class="ml-1.5 normal-case font-normal tracking-normal text-slate-400">(แสดง 10 รายการล่าสุด)</span>
                 </h2>
 
-                <div v-if="!past.length" class="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                    <i class="fa-solid fa-inbox text-2xl mb-2 block"></i>
+                <div v-if="!past.length" class="py-8 text-xs text-center border border-dashed text-slate-400 border-slate-200 rounded-xl">
+                    <i class="block mb-2 text-2xl fa-solid fa-inbox"></i>
                     ยังไม่มีประวัติการจอง
                 </div>
 
                 <div v-else class="space-y-2">
                     <div v-for="b in past" :key="b.id"
-                        class="bg-white border border-slate-100 rounded-xl p-4 flex items-start gap-3 opacity-70">
+                        class="flex items-start gap-3 p-4 bg-white border border-slate-100 rounded-xl opacity-70">
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="font-semibold text-sm text-slate-700">{{ b.room_title }}</span>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-sm font-semibold text-slate-700">{{ b.room_title }}</span>
                                 <span :class="statusConfig[b.status]?.color"
                                     class="text-[10px] font-semibold px-2 py-0.5 rounded-full border">
                                     {{ statusConfig[b.status]?.label }}
@@ -196,6 +208,19 @@ const copyLink = (url) => {
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Pagination -->
+                <div v-if="pastLatest.length > PAST_PER_PAGE" class="flex items-center justify-center gap-2 mt-4">
+                    <button @click="pastPage--" :disabled="pastPage === 1"
+                        class="w-8 h-8 transition-all border rounded-lg border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed">
+                        <i class="text-xs fa-solid fa-chevron-left"></i>
+                    </button>
+                    <span class="text-xs font-bold text-slate-500">หน้า {{ pastPage }} / {{ pastTotalPages }}</span>
+                    <button @click="pastPage++" :disabled="pastPage === pastTotalPages"
+                        class="w-8 h-8 transition-all border rounded-lg border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed">
+                        <i class="text-xs fa-solid fa-chevron-right"></i>
+                    </button>
                 </div>
             </section>
         </main>

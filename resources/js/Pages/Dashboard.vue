@@ -511,6 +511,16 @@ const logoutAdmin = async () => {
                     </button>
                 </div>
                 <div class="flex items-center gap-2 md:gap-3">
+                    <a
+                        :href="`${appBase}/`"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-colors border rounded-lg border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                        <i class="fa-solid fa-house"></i>
+                        <span class="hidden md:inline">หน้าแรก</span>
+                    </a>
+
                     <div class="flex items-center gap-2 pl-2 border-l border-slate-200 md:pl-3">
                         <img
                             v-if="admin?.avatar"
@@ -534,10 +544,11 @@ const logoutAdmin = async () => {
                         </div>
                         <button
                             @click="logoutAdmin"
-                            class="hidden ml-1 text-xs transition-colors text-slate-400 hover:text-red-500 md:block"
+                            class="flex items-center gap-1.5 ml-1 px-3 py-2 text-xs font-bold transition-colors rounded-lg bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600"
                             title="ออกจากระบบ"
                         >
                             <i class="fa-solid fa-right-from-bracket"></i>
+                            <span class="hidden md:inline">ออกจากระบบ</span>
                         </button>
                     </div>
                 </div>
@@ -608,43 +619,54 @@ const logoutAdmin = async () => {
                     </div>
 
                     <template v-else>
-                        <!-- Location tabs -->
-                        <div class="flex flex-wrap gap-2">
-                            <button
-                                v-for="loc in sbLocations" :key="loc.id"
-                                @click="sbActiveLoc = loc; sbSelectedRoom = null; sbTimes = []; sbSelectedTimeIds = []"
-                                :class="sbActiveLoc?.id === loc.id
-                                    ? 'bg-indigo-600 text-white border-indigo-600'
-                                    : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-400'"
-                                class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all"
-                            >{{ loc.title }}</button>
-                        </div>
+                        <!-- Location tabs + Zone/Room list: ซ่อนไปเลยหลังเลือกห้องแล้ว โฟกัสแค่ตารางจอง -->
+                        <template v-if="!sbSelectedRoom">
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    v-for="loc in sbLocations" :key="loc.id"
+                                    @click="sbActiveLoc = loc; sbSelectedRoom = null; sbTimes = []; sbSelectedTimeIds = []"
+                                    :class="sbActiveLoc?.id === loc.id
+                                        ? 'bg-indigo-600 text-white border-indigo-600'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-400'"
+                                    class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all"
+                                >{{ loc.title }}</button>
+                            </div>
 
-                        <!-- Zone + Room list -->
-                        <div v-if="sbActiveLoc" class="space-y-3">
-                            <div v-for="zone in sbActiveLoc.zones" :key="zone.id">
-                                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{{ zone.title }}</p>
-                                <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                                    <button
-                                        v-for="room in zone.rooms" :key="room.id"
-                                        @click="room.status !== '1' && (sbSelectedRoom = room)"
-                                        :disabled="room.status === '1'"
-                                        :class="sbSelectedRoom?.id === room.id
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                            : room.status === '1'
+                            <!-- Zone + Room list -->
+                            <div v-if="sbActiveLoc" class="space-y-3">
+                                <div v-for="zone in sbActiveLoc.zones" :key="zone.id">
+                                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{{ zone.title }}</p>
+                                    <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                                        <button
+                                            v-for="room in zone.rooms" :key="room.id"
+                                            @click="room.status !== '1' && (sbSelectedRoom = room)"
+                                            :disabled="room.status === '1'"
+                                            :class="room.status === '1'
                                                 ? 'opacity-50 cursor-not-allowed border-slate-200'
                                                 : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'"
-                                        class="text-left text-xs p-2.5 border rounded-xl transition-all"
-                                    >
-                                        <div class="font-bold leading-tight">{{ room.title }}</div>
-                                        <div v-if="room.detail" class="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{{ room.detail }}</div>
-                                    </button>
+                                            class="text-left text-xs p-2.5 border rounded-xl transition-all"
+                                        >
+                                            <div class="font-bold leading-tight">{{ room.title }}</div>
+                                            <div v-if="room.detail" class="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{{ room.detail }}</div>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        </template>
 
                         <!-- Date + Slots (แสดงเมื่อเลือกห้องแล้ว) -->
                         <template v-if="sbSelectedRoom">
+                            <!-- ห้องที่เลือก + เปลี่ยนห้อง -->
+                            <div class="flex items-center justify-between pb-1">
+                                <div class="text-xs font-bold text-slate-800">
+                                    <i class="mr-1.5 text-slate-400 fa-solid fa-door-open"></i>{{ sbSelectedRoom.title }}
+                                </div>
+                                <button type="button"
+                                    @click="sbSelectedRoom = null; sbTimes = []; sbSelectedTimeIds = []"
+                                    class="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                                    <i class="fa-solid fa-chevron-left"></i> เปลี่ยนห้อง
+                                </button>
+                            </div>
                             <div>
                                 <label class="text-xs font-bold text-slate-700 block mb-1.5">เลือกวันที่</label>
                                 <input type="date" v-model="sbDate" :min="sbTodayStr"

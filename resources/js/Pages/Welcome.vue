@@ -25,6 +25,12 @@ const currentZones    = computed(() => currentLocation.value?.zones ?? []);
 const zoneTitle  = (zone) => currentLang.value === 'en' ? (zone?.title_eng ?? zone?.title) : zone?.title;
 const zoneDetail = (zone) => zone?.detail ?? '';
 
+// หา location ที่เป็นเจ้าของ zone (ใช้ใน modal จองห้อง — โชว์ "พื้นที่: ชื่อ location")
+const zoneLocationTitle = (zone) => {
+    const loc = props.locations?.find((l) => l.zones?.some((z) => z.id === zone?.id));
+    return loc ? locTitle(loc) : '';
+};
+
 // แยกชื่อโซนตรงเว้นวรรคที่ 1-2 นับจากซ้าย → ส่วนกลาง (ระหว่างเว้นวรรคที่ 1 กับ 2) เป็นสีเหลือง ที่เหลือปกติ
 // เช่น "Study Room" → "Study" ปกติ + "Room" เหลือง (มีเว้นวรรคเดียว เลยเป็นคำท้าย)
 //      "Meeting MSU Space" → "Meeting" ปกติ + "MSU" เหลือง + "Space" ปกติ
@@ -742,17 +748,29 @@ const hideToast = () => {
             </template>
         </section>
 
-        <!-- แถบประกาศสำคัญ (เนื้อหาจริงจากระบบเดิม) -->
-        <div class="border-b bg-amber-50 border-amber-100">
-            <div class="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2.5 mx-auto text-xs text-slate-900 max-w-[1600px]">
-                <span class="font-bold shrink-0">
-                    <i class="mr-1 fa-solid fa-bullhorn"></i>{{ t("quickStatTitle") }}
-                </span>
-                <span>{{ t("ann1") }}</span>
-                <span class="hidden sm:inline text-amber-300">•</span>
-                <span class="hidden sm:inline">{{ t("ann2") }}</span>
-                <span class="hidden md:inline text-amber-300">•</span>
-                <span class="hidden md:inline">{{ t("ann3") }}</span>
+        <!-- แถบประกาศสำคัญ (เลื่อนวิ่งเป็น loop แบบป้ายข่าว) -->
+        <div class="overflow-hidden border-b bg-amber-50 border-amber-100">
+            <div class="flex items-center py-2.5 marquee-track w-max">
+                <div class="flex items-center shrink-0 gap-x-6 pr-6 text-xs text-slate-900 whitespace-nowrap">
+                    <span class="font-bold shrink-0">
+                        <i class="mr-1 fa-solid fa-bullhorn"></i>{{ t("quickStatTitle") }}
+                    </span>
+                    <span>{{ t("ann1") }}</span>
+                    <span class="text-amber-300">•</span>
+                    <span>{{ t("ann2") }}</span>
+                    <span class="text-amber-300">•</span>
+                    <span>{{ t("ann3") }}</span>
+                </div>
+                <div class="flex items-center shrink-0 gap-x-6 pr-6 text-xs text-slate-900 whitespace-nowrap" aria-hidden="true">
+                    <span class="font-bold shrink-0">
+                        <i class="mr-1 fa-solid fa-bullhorn"></i>{{ t("quickStatTitle") }}
+                    </span>
+                    <span>{{ t("ann1") }}</span>
+                    <span class="text-amber-300">•</span>
+                    <span>{{ t("ann2") }}</span>
+                    <span class="text-amber-300">•</span>
+                    <span>{{ t("ann3") }}</span>
+                </div>
             </div>
         </div>
 
@@ -1510,7 +1528,7 @@ const hideToast = () => {
                 <div class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
                     <!-- Zone name badge + ชุดอุปกรณ์มาตรฐานของโซน -->
                     <div class="p-3 border bg-slate-50 border-slate-200 rounded-xl">
-                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">พื้นที่</div>
+                        <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">พื้นที่ • {{ selectedZone ? zoneLocationTitle(selectedZone) : '' }}</div>
                         <div class="font-bold text-slate-900 text-sm pt-0.5">{{ selectedZone ? zoneTitle(selectedZone) : '' }}</div>
                         <div v-if="selectedZone?.equipment?.length" class="pt-2 mt-2 border-t border-slate-200">
                             <div class="text-[10px] text-slate-400 font-semibold mb-1">ชุดอุปกรณ์ภายในโซน</div>
@@ -1534,8 +1552,18 @@ const hideToast = () => {
                         </div>
                     </div>
 
+                    <!-- โซน scan-only: ห้ามจองผ่านเว็บ ต้องสแกน QR ที่ตัวอุปกรณ์เท่านั้น -->
+                    <div v-if="selectedZone?.scan_only === '1'"
+                        class="flex flex-col items-center gap-3 p-6 text-center border bg-amber-50 border-amber-200 rounded-xl">
+                        <i class="text-3xl text-amber-500 fa-solid fa-qrcode"></i>
+                        <div>
+                            <div class="text-sm font-bold text-amber-900">ต้องสแกน QR ที่ตัวอุปกรณ์เท่านั้นเพื่อทำการจอง</div>
+                            <p class="mt-1 text-xs text-amber-700">โซนนี้ไม่รองรับการจองล่วงหน้าผ่านเว็บไซต์ — กรุณาไปที่จุดบริการแล้วสแกน QR code บนอุปกรณ์เพื่อจองและเช็คอินได้ทันที</p>
+                        </div>
+                    </div>
+
                     <!-- แจ้งเตือนถ้ายังไม่ล็อกอิน -->
-                    <div v-if="!authUser" class="bg-orange-50 border border-orange-200 text-orange-800 text-xs p-3.5 rounded-lg flex items-start gap-2">
+                    <div v-else-if="!authUser" class="bg-orange-50 border border-orange-200 text-orange-800 text-xs p-3.5 rounded-lg flex items-start gap-2">
                         <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
                         <div>
                             <span>{{ t("bookingLoginAlert") }}</span>
@@ -1825,12 +1853,12 @@ const hideToast = () => {
         <div v-if="modals.joinShare"
             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <div class="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-2xl border-slate-200">
-                <div class="flex items-center justify-between p-5 text-white bg-blue-900">
+                <div class="flex items-center justify-between p-5 text-slate-900 bg-amber-400">
                     <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-user-plus text-amber-400"></i>
+                        <i class="fa-solid fa-user-plus text-slate-900"></i>
                         <h3 class="text-sm font-bold font-prompt">แชร์ลิงก์ให้เพื่อนเข้าร่วม</h3>
                     </div>
-                    <button @click="closeModal('joinShare')" class="transition-colors text-slate-300 hover:text-white">
+                    <button @click="closeModal('joinShare')" class="transition-colors text-slate-700 hover:text-slate-900">
                         <i class="text-lg fa-solid fa-xmark"></i>
                     </button>
                 </div>
@@ -1951,5 +1979,21 @@ const hideToast = () => {
 }
 @media (prefers-reduced-motion: reduce) {
     .tab-hint { animation: none; opacity: 0.6; transform: translate(-50%, 0); }
+}
+
+/* แถบประกาศสำคัญ — เลื่อนวิ่งซ้ายเป็น loop ไม่มีที่สิ้นสุด (เนื้อหาซ้ำ 2 ชุดต่อกัน เลื่อน -50% แล้ววนกลับ) */
+@keyframes marqueeScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+.marquee-track {
+    animation: marqueeScroll 22s linear infinite;
+}
+.marquee-track:hover {
+    animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+    .marquee-track { animation: none; }
+    .marquee-track > *:nth-child(2) { display: none; }
 }
 </style>

@@ -172,6 +172,10 @@ class BookingController extends Controller
             return response()->json(['message' => 'ห้องนี้ไม่พร้อมให้บริการ'], 422);
         }
 
+        if ($room->zone?->scan_only === '1') {
+            return response()->json(['message' => 'โซนนี้ต้องสแกน QR ที่ตัวอุปกรณ์เท่านั้นเพื่อทำการจอง ไม่รับจองผ่านหน้าเว็บ'], 422);
+        }
+
         for ($i = 1; $i < count($timeIds); $i++) {
             if ($timeIds[$i] !== $timeIds[$i - 1] + 1) {
                 return response()->json(['message' => 'ต้องเลือกช่วงเวลาที่ต่อเนื่องกันเท่านั้น'], 422);
@@ -202,14 +206,20 @@ class BookingController extends Controller
                 Quota::assertCanBook($member->id, $date, $zone->id, $zoneQuota, count($timeIds));
 
                 $isAuto      = $room->confirm_type === 'auto';
+                $hasKiosk    = $room->access_control === '1';
                 $minCapacity = $zone->min_capacity ?? 1;
+                $isComplete  = $minCapacity <= 1; // ครบตั้งแต่ leader คนเดียว
 
                 // auto → confirmed ทันที
-                // manual + leader คนเดียวครบ min_capacity → waiting_confirm
-                // manual + ยังต้องการเพื่อน → pending
-                $groupStatus = $isAuto
-                    ? 'confirmed'
-                    : ($minCapacity <= 1 ? 'waiting_confirm' : 'pending');
+                // manual + มี kiosk + ครบแล้ว → ข้าม waiting_confirm ไป confirmed เลย (kiosk ทำหน้าที่ verify แทนเจ้าหน้าที่)
+                // manual + ไม่มี kiosk + ครบแล้ว → waiting_confirm (รอเจ้าหน้าที่)
+                // ยังไม่ครบ (ไม่ว่ามี kiosk หรือไม่) → pending
+                $groupStatus = match (true) {
+                    $isAuto                  => 'confirmed',
+                    $isComplete && $hasKiosk => 'confirmed',
+                    $isComplete              => 'waiting_confirm',
+                    default                  => 'pending',
+                };
 
                 $groups    = [];
                 $shareToken = Str::random(32);
@@ -398,10 +408,17 @@ class BookingController extends Controller
                 // นับสมาชิกทั้งหมดใน group นี้ (หลัง join)
                 $totalMembers = Booking::where('group_id', $group->id)->count();
 
-                // ครบ min_capacity → เปลี่ยนทุก slot เป็น waiting_confirm
+                // ครบ min_capacity → มี kiosk ข้าม waiting_confirm ไป confirmed เลย (เหมือน store())
+                // ไม่มี kiosk → waiting_confirm รอเจ้าหน้าที่ตามเดิม
                 if ($totalMembers >= $minCapacity) {
+                    $hasKiosk   = $group->room->access_control === '1';
+                    $newStatus  = $hasKiosk ? 'confirmed' : 'waiting_confirm';
+
                     foreach ($siblings as $g) {
-                        $g->update(['status' => 'waiting_confirm']);
+                        $g->update(['status' => $newStatus]);
+                        if ($hasKiosk) {
+                            $g->bookings()->where('status', 'pending')->update(['status' => 'confirmed']);
+                        }
                     }
                 }
             });

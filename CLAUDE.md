@@ -53,6 +53,7 @@ locations
 tools  (คลังอุปกรณ์กลาง: name, icon) — ใช้ร่วมทุกโซน
 
 zones.scan_prefix  — prefix สร้าง scan_code เช่น "3F-CH"
+zones.scan_only    — '1' = ห้ามจองผ่านเว็บทั้งโซน ต้องสแกน QR ที่ตัวอุปกรณ์เท่านั้น (เช่น โซนเก้าอี้) — หน้าแรกยังดูตารางว่างได้ แต่กดจองไม่ได้
 rooms.scan_code    — โค้ดบน QR sticker เช่น "3F-CH-012" (unique)
 booking_groups.source  — web | qr | staff
 scan_logs  — log ทุกครั้งที่สแกน /s/{code} (scan_code, room_id?, user_id?, outcome, ip, ua)
@@ -108,14 +109,23 @@ settings   (key–value config ทั้งระบบ)
 - **Weekday/Weekend**: เช็คจากวันที่ → ใช้ time_weekday หรือ time_weekend ของ zone
 - **Booked check**: booking_groups ที่ status IN (pending, waiting_confirm, confirmed) = ไม่ว่าง
 - **Zone/Room status**: `'0'` = เปิด, `'1'` = ปิด
-- **confirm_type = auto**: จอง → confirmed ทันที
-- **confirm_type = manual**: จอง → pending (รอ member ครบ min_capacity) → waiting_confirm (รอ admin approve) → confirmed
+- **4 ประเภทห้อง (confirm_type × access_control) — ตารางช่วยจำ**: ตัดสินด้วย 2 แกนอิสระจากกัน — `confirm_type` (ต้องรอคนอนุมัติไหม) และ `access_control`/kiosk (มีกลไกเช็คอินด้วยตัวเองไหม — kiosk คือ "กลอนประตูไฟฟ้า" ไม่ใช่ด่านขออนุญาตจากคน)
+
+  | | มี kiosk | ไม่มี kiosk |
+  |---|---|---|
+  | **auto** | confirmed ทันที, เช็คอินด้วยการแตะบัตรที่ kiosk (ปลดล็อกประตูไปในตัว) — ไม่ติดต่อใครเลย (ยังไม่มีห้องจริง, โปรเจกต์อนาคต) | confirmed ทันที, เช็คอินผ่าน `scan_code`/QR ถ้ามี (เช่น เก้าอี้) — ถ้าไม่มี `scan_code` ต้องพึ่งปุ่ม "เช็คอิน" ของแอดมิน (เช่น NAP, Pavilion) |
+  | **manual** | ครบสมาชิก → ข้าม `waiting_confirm` ไป confirmed ทันที (kiosk verify แทนคน) → ต้องสแกนใน 15 นาที ไม่งั้น cron ตัด (เช่น ห้องเรียนรู้ A) | ครบสมาชิก → `waiting_confirm` → นิสิตต้องมาติดต่อเคาน์เตอร์ → เจ้าหน้าที่กด "อนุมัติ" ปุ่มเดียว = confirmed+checked_in พร้อมกัน ไม่อนุมัติใน 15 นาทีหลังเริ่ม slot → cron ตัด (เช่น study room) |
+
+- **confirm_type = auto**: จอง → confirmed ทันที (ไม่สนใจ min_capacity เลย)
+- **confirm_type = manual**: จอง → pending (รอ member ครบ min_capacity) → ครบแล้วแยกตาม kiosk ของห้อง (เช็คตอน store()/join() ที่ครบ capacity พอดี):
+  - **ไม่มี kiosk** (เช่น study room): → **waiting_confirm** (รอเจ้าหน้าที่ — นิสิตต้องมาติดต่อเคาน์เตอร์เอง) → เจ้าหน้าที่เช็คว่ามาจริงแล้วกด "อนุมัติ" **1 ปุ่มเดียว = confirmed + checked_in พร้อมกัน** (`AdminBookingController@approveSession` เช็ค `room.access_control==='0'` แล้ว set checked_in ให้เลย ไม่ต้องกดเช็คอินแยกอีกปุ่ม) — ไม่อนุมัติภายใน 15 นาทีหลังเริ่ม slot → cron ยกเลิก (`cancelUnconfirmedManual`)
+  - **มี kiosk** (เช่น ห้องเรียนรู้ A): → **ข้าม waiting_confirm ไป confirmed ทันที** (kiosk ทำหน้าที่ verify ตัวตนแทนเจ้าหน้าที่ ไม่ต้องรอ staff) → ต้องสแกน kiosk ภายใน 15 นาทีหลังเริ่ม slot ไม่งั้น cron ยกเลิก (`cancelUnscannedKiosk`)
 - **Join flow**: leader แชร์ join_token (หมดอายุ 15 นาที) ให้ member อื่นมาเข้าร่วม session
-- **Check-in**: `bookings.status confirmed → checked_in` เกิดที่ (1) kiosk สแกน (ห้อง `access_control='1'`) หรือ (2) ปุ่ม "เช็คอิน" ในแท็บ admin (ห้อง `access_control='0'`) — `approveSession` set แค่ `confirmed` ไม่เช็คอินให้
+- **Check-in**: `bookings.status confirmed → checked_in` เกิดที่ (1) kiosk/scan-to-book สแกน (ห้อง `access_control='1'` หรือมี `scan_code`) (2) ปุ่ม "เช็คอิน" แยกในแท็บ admin (ห้อง `access_control='0'` ที่เป็น auto — ห้อง manual ไม่มี kiosk ถูก merge เข้ากับ "อนุมัติ" ไปแล้ว ไม่มีปุ่มเช็คอินแยกให้เห็น)
 - **Kiosk** (`KioskController@getAccess`): member แสดง code + slot ปัจจุบันตรง →
   - ห้อง `access_control='1'`: รับทั้ง `waiting_confirm`/`confirmed` → promote `waiting_confirm→confirmed` + set `checked_in` ทุก slot ที่เหลือใน session (idempotent). `pending` (member ไม่ครบ) = ไม่ผ่าน
-  - ห้อง `access_control='0'`: ต้อง `confirmed` มาก่อน (เจ้าหน้าที่ approve)
-- **no_show**: `markNoShow` mark ทุกห้อง (ไม่จำกัด auto) — `confirmed` ที่ slot จบแล้วยังไม่ `checked_in` → `no_show`
+  - ห้อง `access_control='0'`: ต้อง `confirmed` มาก่อน (เจ้าหน้าที่ approve/checkin)
+- **no_show**: `markNoShow` mark ทุกห้อง — `confirmed` ที่ slot จบแล้ว (เต็มชั่วโมง) ยังไม่ `checked_in` → `no_show` (แค่บันทึกสถิติ ไม่ปล่อย slot คืน ต่างจาก `cancelUnscannedKiosk`/`cancelUnconfirmedManual` ที่ปล่อยคืนทันทีตอน 15 นาที)
 - **Scan-to-Book** (`/s/{code}` → `ScanBookController`): QR ติดที่ตัว unit → สแกน = "ฉันอยู่ตรงนี้ ตอนนี้"
   - ไม่ login → เก็บ intended → Google OAuth → กลับมา
   - มี booking ตอนนี้ → เช็คอินให้ (ผ่าน `App\Support\ScanCheckin` — ตัวเดียวกับ Kiosk)
@@ -241,6 +251,7 @@ settings   (key–value config ทั้งระบบ)
 | `app/Http/Controllers/Auth/GoogleController.php` | Google OAuth (+ `defer()` เรียก PatronService หลัง login) |
 | `app/Support/PatronService.php` | ดึง faculty/branch/type จาก `libapp.msu.ac.th` (config: `services.patron`) |
 | `app/Console/Commands/SyncPatronDetails.php` | `members:sync-patron` — backfill/refresh (schedule รายเดือน) |
+| `app/Console/Commands/CancelExpiredBookings.php` | `bookings:cancel-expired` — cron everyMinute: join-token หมดอายุ, manual ไม่มี kiosk ไม่อนุมัติใน 15 นาที, มี kiosk ไม่สแกนใน 15 นาที, mark no_show |
 | `resources/js/Pages/Welcome.vue` | หน้าหลัก (booking modal) |
 | `resources/js/Pages/MyBookings.vue` | ประวัติการจอง |
 | `resources/js/Pages/Join.vue` | Join session page |

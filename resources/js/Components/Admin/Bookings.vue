@@ -10,6 +10,7 @@ interface BookingRow {
     time_label: string;
     hours: number;
     status: string;
+    source?: string;
     confirm_type: "auto" | "manual";
     access_control: "0" | "1";
     checked_in: boolean;
@@ -60,6 +61,10 @@ const todayStr = () => new Date().toISOString().split("T")[0];
 
 const search = ref("");
 const filterDate = ref(todayStr());
+
+// วันที่สำหรับมุมมองผังห้อง (ยกขึ้นมาไว้ที่นี่ เพื่อโชว์ date picker แถวเดียวกับปุ่มสลับ รายการ/ผังห้อง)
+const boardDate   = ref(todayStr());
+const isBoardToday = computed(() => boardDate.value === todayStr());
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 function onSearchInput() {
@@ -204,6 +209,32 @@ async function checkin(row: BookingRow) {
     fetch(paginated.value.current_page);
 }
 
+async function cancel(row: BookingRow) {
+    const hours = row.hours > 1 ? ` (${row.hours} ชม.)` : "";
+    const result = await Swal.fire({
+        title: "ยกเลิกการจองนี้?",
+        html: `<div class="text-sm text-left"><b>${row.room_title}</b><br>${fmtDate(row.date)} • ${row.time_label}${hours}<br><span class="text-slate-400">${row.member_name}</span></div>`,
+        icon: "warning",
+        input: "text",
+        inputPlaceholder: "เหตุผล (ไม่บังคับ)",
+        showCancelButton: true,
+        confirmButtonColor: "#dc2626",
+        cancelButtonColor: "#94a3b8",
+        confirmButtonText: "ยกเลิกการจอง",
+        cancelButtonText: "ปิด",
+        reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
+    await axios.post("/admin/bookings/cancel", { ids: row.ids, reason: result.value || undefined });
+    Swal.fire({
+        title: "ยกเลิกเรียบร้อย",
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+    });
+    fetch(paginated.value.current_page);
+}
+
 async function reject(row: BookingRow) {
     const hours = row.hours > 1 ? ` (${row.hours} ชม.)` : "";
     const result = await Swal.fire({
@@ -274,6 +305,24 @@ onMounted(() => fetch());
                 </button>
             </template>
 
+            <template v-else>
+                <div class="relative">
+                    <input
+                        :value="fmtDate(boardDate)"
+                        readonly
+                        class="px-3 py-2 text-xs bg-white border cursor-pointer border-slate-200 rounded-xl text-slate-700 w-28 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        @click="($refs.hiddenBoardDate as HTMLInputElement).showPicker()"
+                    />
+                    <input ref="hiddenBoardDate" v-model="boardDate" type="date"
+                        class="absolute inset-0 opacity-0 pointer-events-none" />
+                </div>
+                <button
+                    @click="boardDate = todayStr()"
+                    :class="isBoardToday ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'"
+                    class="px-3 py-2 text-xs font-bold border rounded-xl transition-colors"
+                >วันนี้</button>
+            </template>
+
             <div class="flex items-center gap-3 ml-auto">
                 <span
                     v-if="viewMode === 'list' && paginated.pending_count > 0"
@@ -300,7 +349,7 @@ onMounted(() => fetch());
             </div>
         </div>
 
-        <BookingBoard v-if="viewMode === 'board'" />
+        <BookingBoard v-if="viewMode === 'board'" :date="boardDate" />
 
         <template v-else>
         <!-- Tabs -->
@@ -464,21 +513,32 @@ onMounted(() => fetch());
                                             ปฏิเสธ
                                         </button>
                                     </div>
-                                    <button
-                                        v-else-if="canCheckin(row)"
-                                        @click="checkin(row)"
-                                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] transition-all inline-flex items-center gap-1"
+                                    <div
+                                        v-else-if="row.status === 'confirmed'"
+                                        class="flex items-center justify-end gap-1.5"
                                     >
-                                        <i class="fa-solid fa-door-open"></i>
-                                        เช็คอิน
-                                    </button>
-                                    <span
-                                        v-else-if="row.status === 'confirmed' && row.checked_in"
-                                        class="text-[10px] font-bold text-emerald-600 inline-flex items-center gap-1"
-                                    >
-                                        <i class="fa-solid fa-circle-check"></i>
-                                        เช็คอินแล้ว
-                                    </span>
+                                        <button
+                                            v-if="canCheckin(row)"
+                                            @click="checkin(row)"
+                                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] transition-all inline-flex items-center gap-1"
+                                        >
+                                            <i class="fa-solid fa-door-open"></i>
+                                            เช็คอิน
+                                        </button>
+                                        <span
+                                            v-else-if="row.checked_in"
+                                            class="text-[10px] font-bold text-emerald-600 inline-flex items-center gap-1"
+                                        >
+                                            <i class="fa-solid fa-circle-check"></i>
+                                            เช็คอินแล้ว
+                                        </span>
+                                        <button
+                                            @click="cancel(row)"
+                                            class="bg-white hover:bg-red-50 text-red-500 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-red-200 transition-all"
+                                        >
+                                            ยกเลิก
+                                        </button>
+                                    </div>
                                     <span
                                         v-else
                                         class="text-[10px] text-slate-400"

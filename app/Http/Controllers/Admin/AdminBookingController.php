@@ -113,6 +113,7 @@ class AdminBookingController extends Controller
                     'lead_user_id' => $g->lead_user_id,
                     'room_id'      => $g->room_id,
                     'status'       => $g->status,
+                    'source'       => $g->source,
                     'last_time'    => $g->time_id,
                     'ids'          => [$g->id],
                     'date'         => $g->date->format('Y-m-d'),
@@ -141,8 +142,12 @@ class AdminBookingController extends Controller
     {
         $pad = fn($h) => sprintf('%02d:00', $h);
 
-        $bk        = collect($s['bk_statuses'] ?? [])->reject(fn($st) => $st === 'cancelled');
-        $checkedIn = $bk->isNotEmpty() && $bk->every(fn($st) => $st === 'checked_in');
+        $bk = collect($s['bk_statuses'] ?? [])->reject(fn($st) => $st === 'cancelled');
+        // เจ้าหน้าที่จองแทน (source=staff) ไม่มีแถว bookings ให้เช็คอินจริง — ถือว่า "เช็คอินแล้ว" ไปเลย
+        // เพราะเจ้าหน้าที่ยืนยันล่วงหน้าอยู่แล้วตอนกดจอง ไม่ต้องมีขั้นเช็คอินแยกอีก
+        $checkedIn = $s['source'] === 'staff'
+            ? true
+            : ($bk->isNotEmpty() && $bk->every(fn($st) => $st === 'checked_in'));
 
         return [
             'ids'            => $s['ids'],
@@ -150,6 +155,7 @@ class AdminBookingController extends Controller
             'time_label'     => $pad($s['start_hour']) . ' – ' . $pad($s['end_hour']) . ' น.',
             'hours'          => $s['hours'],
             'status'         => $s['status'],
+            'source'         => $s['source'] ?? 'web',
             'confirm_type'   => $s['confirm_type'],
             'access_control' => $s['access_control'] ?? '0',
             'checked_in'     => $checkedIn,
@@ -243,7 +249,10 @@ class AdminBookingController extends Controller
 
         foreach ($sessions as $s) {
             $bk         = collect($s['occupants']);
-            $checkedIn  = $bk->isNotEmpty() && $bk->every(fn($o) => $o['status'] === 'checked_in');
+            // เจ้าหน้าที่จองแทน (source=staff) ไม่มี occupants ให้เช็คอินจริง — ถือว่าเช็คอินแล้วไปเลย (เหตุผลเดียวกับ formatSession ด้านบน)
+            $checkedIn  = $s['source'] === 'staff'
+                ? true
+                : ($bk->isNotEmpty() && $bk->every(fn($o) => $o['status'] === 'checked_in'));
             $payload    = [
                 'ids'        => $s['ids'],
                 'status'     => $s['status'],
@@ -403,14 +412,24 @@ class AdminBookingController extends Controller
     {
         $ids = $request->validate(['ids' => 'required|array', 'ids.*' => 'integer'])['ids'];
 
-        $groups = BookingGroup::whereIn('id', $ids)
+        $groups = BookingGroup::with('room')
+            ->whereIn('id', $ids)
             ->whereIn('status', ['pending', 'waiting_confirm'])
             ->get();
 
         foreach ($groups as $g) {
             $g->update(['status' => 'confirmed']);
-            // อนุมัติเท่านั้น — ไม่เช็คอิน (เช็คอินเกิดที่ kiosk หรือปุ่ม "เช็คอิน" วันใช้งานจริง)
-            $g->bookings()->where('status', 'pending')->update(['status' => 'confirmed']);
+
+            if ($g->room?->access_control === '0') {
+                // ห้องไม่มี kiosk — เจ้าหน้าที่เช็คคนมาจริงก่อนกดปุ่มนี้อยู่แล้ว ถือว่าเช็คอินไปในตัว
+                $g->bookings()->where('status', 'pending')->update([
+                    'status'     => 'checked_in',
+                    'checkin_at' => Carbon::now('Asia/Bangkok'),
+                ]);
+            } else {
+                // ห้องมี kiosk — อนุมัติเฉยๆ รอสแกน kiosk เพื่อเช็คอินจริงแยกต่างหาก
+                $g->bookings()->where('status', 'pending')->update(['status' => 'confirmed']);
+            }
         }
 
         return response()->json(['message' => 'อนุมัติสำเร็จ', 'count' => $groups->count()]);

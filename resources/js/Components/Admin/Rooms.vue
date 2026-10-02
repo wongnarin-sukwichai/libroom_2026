@@ -7,7 +7,7 @@ interface ToolItem { id: number; name: string; icon: string }
 interface ZoneToolRow { tool_id: number; quantity: number }
 interface RoomToolRow { tool_id: number; mode: 'add' | 'remove'; quantity: number }
 interface RoomRow  { id: number; title: string; confirm_type: string; access_control: string; status: string; tools?: RoomToolRow[]; scan_code?: string | null }
-interface ZoneRow  { id: number; title: string; status: string; zone_daily_quota: number | null; time_weekday: number; time_weekend: number; min_capacity: number; rooms: RoomRow[]; tools?: ZoneToolRow[]; scan_prefix?: string | null; icon?: string | null }
+interface ZoneRow  { id: number; title: string; status: string; zone_daily_quota: number | null; time_weekday: number; time_weekend: number; min_capacity: number; rooms: RoomRow[]; tools?: ZoneToolRow[]; scan_prefix?: string | null; icon?: string | null; scan_only?: string | null }
 
 // ไอคอนให้เจ้าหน้าที่เลือกแทนโซน (แสดงที่หน้าแรก)
 const ZONE_ICONS = [
@@ -27,6 +27,42 @@ const activeTab  = ref<'status' | 'settings' | 'tools' | 'qr'>('status');
 const activeLoc  = ref<number>(0);
 const toggling   = ref<string | null>(null);
 
+// อธิบาย Auto/Manual × Kiosk/ไม่มี Kiosk (popup ช่วยจำ)
+function showConfirmTypeHelp() {
+    Swal.fire({
+        title: 'Auto / Manual × Kiosk คืออะไร',
+        width: 560,
+        html: `
+            <div style="text-align:left;font-size:12.5px;line-height:1.6;color:#334155">
+                <p style="margin-bottom:10px">
+                    ตัดสินด้วย 2 แกนอิสระจากกัน —
+                    <b>Auto/Manual</b> = ต้องรอคนอนุมัติไหม,
+                    <b>Kiosk</b> = มีกลไกเช็คอินด้วยตัวเองไหม (kiosk คือ "กลอนประตูไฟฟ้า" ไม่ใช่ด่านขออนุญาตจากคน)
+                </p>
+                <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+                    <tr style="background:#f1f5f9">
+                        <th style="padding:6px;border:1px solid #e2e8f0;text-align:left"></th>
+                        <th style="padding:6px;border:1px solid #e2e8f0;text-align:left">มี Kiosk</th>
+                        <th style="padding:6px;border:1px solid #e2e8f0;text-align:left">ไม่มี Kiosk</th>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px;border:1px solid #e2e8f0;font-weight:bold;background:#f8fafc">Auto</td>
+                        <td style="padding:6px;border:1px solid #e2e8f0">confirmed ทันที เช็คอินด้วยการแตะบัตรที่ kiosk (ปลดล็อกประตูไปในตัว) — ไม่ติดต่อใครเลย</td>
+                        <td style="padding:6px;border:1px solid #e2e8f0">confirmed ทันที เช็คอินผ่าน QR (<code>scan_code</code>) ถ้ามี เช่น เก้าอี้ — ถ้าไม่มี ต้องพึ่งปุ่ม "เช็คอิน" ของแอดมิน เช่น NAP</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px;border:1px solid #e2e8f0;font-weight:bold;background:#f8fafc">Manual</td>
+                        <td style="padding:6px;border:1px solid #e2e8f0">ครบสมาชิก → ข้าม "รอเจ้าหน้าที่" ไป confirmed ทันที (kiosk verify แทนคน) → ต้องสแกนใน 15 นาที ไม่งั้นระบบตัด</td>
+                        <td style="padding:6px;border:1px solid #e2e8f0">ครบสมาชิก → รอเจ้าหน้าที่ → นิสิตมาติดต่อเคาน์เตอร์ → กด "อนุมัติ" ปุ่มเดียว = ยืนยัน+เช็คอินพร้อมกัน ไม่อนุมัติใน 15 นาทีระบบตัด</td>
+                    </tr>
+                </table>
+            </div>
+        `,
+        confirmButtonText: 'เข้าใจแล้ว',
+        confirmButtonColor: '#1e3a8a',
+    });
+}
+
 // collapse/expand zone rooms
 const expandedZones = ref<Set<number>>(new Set());
 function toggleExpand(zoneId: number) {
@@ -38,7 +74,7 @@ function toggleExpand(zoneId: number) {
 
 // settings form per zone
 const editingZone    = ref<number | null>(null);
-const settingsForm   = ref({ zone_daily_quota: 1, time_weekday: 1, time_weekend: 4, min_capacity: 1, icon: '' as string | null });
+const settingsForm   = ref({ zone_daily_quota: 1, time_weekday: 1, time_weekend: 4, min_capacity: 1, icon: '' as string | null, scan_only: false });
 const savingSettings = ref(false);
 
 // bulk edit all zones in current location
@@ -140,6 +176,16 @@ async function toggleRoomAccess(room: RoomRow) {
     } finally { toggling.value = null; }
 }
 
+async function toggleRoomConfirmType(room: RoomRow) {
+    const key = `room-ct-${room.id}`;
+    if (toggling.value) return;
+    toggling.value = key;
+    try {
+        const res = await axios.post(`/admin/rooms/${room.id}/toggle-confirm-type`);
+        room.confirm_type = res.data.confirm_type;
+    } finally { toggling.value = null; }
+}
+
 function openSettings(zone: ZoneRow) {
     editingZone.value  = zone.id;
     settingsForm.value = {
@@ -148,6 +194,7 @@ function openSettings(zone: ZoneRow) {
         time_weekend:     zone.time_weekend,
         min_capacity:     zone.min_capacity,
         icon:             zone.icon ?? null,
+        scan_only:        zone.scan_only === '1',
     };
 }
 
@@ -162,6 +209,7 @@ async function saveSettings(zone: ZoneRow) {
         zone.time_weekend     = settingsForm.value.time_weekend;
         zone.min_capacity     = settingsForm.value.min_capacity;
         zone.icon             = settingsForm.value.icon;
+        zone.scan_only        = settingsForm.value.scan_only ? '1' : '0';
         editingZone.value     = null;
         Swal.fire({ title: 'บันทึกแล้ว', icon: 'success', timer: 1000, showConfirmButton: false });
     } catch (err: any) {
@@ -380,6 +428,13 @@ onMounted(() => fetchAll());
             <!-- ── TAB 1: สถานะพื้นที่ ── -->
             <div v-if="activeTab === 'status' && currentLoc" class="space-y-4">
 
+                <!-- ปุ่มช่วยอธิบาย Auto/Manual × Kiosk -->
+                <button @click="showConfirmTypeHelp"
+                    class="flex items-center gap-1.5 text-[11px] font-bold text-blue-700 hover:underline">
+                    <i class="fa-solid fa-circle-info"></i>
+                    Auto / Manual × Kiosk คืออะไร?
+                </button>
+
                 <!-- Location status -->
                 <div class="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
                     <div>
@@ -429,10 +484,16 @@ onMounted(() => fetchAll());
                             class="flex items-center justify-between py-2.5">
                             <div class="flex items-center gap-2 flex-wrap">
                                 <span class="text-xs text-slate-700 font-medium">{{ room.title }}</span>
-                                <span :class="room.confirm_type === 'auto' ? 'text-sky-600' : 'text-amber-600'"
-                                    class="text-[10px]">
+                                <button @click="toggleRoomConfirmType(room)"
+                                    :disabled="toggling === `room-ct-${room.id}`"
+                                    :class="room.confirm_type === 'auto'
+                                        ? 'bg-sky-50 text-sky-600 border-sky-200'
+                                        : 'bg-amber-50 text-amber-600 border-amber-200'"
+                                    class="text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors disabled:opacity-50 flex items-center gap-1"
+                                    :title="room.confirm_type === 'auto' ? 'จองแล้วยืนยันทันที ไม่ต้องรออนุมัติ' : 'ต้องรอเจ้าหน้าที่/ครบสมาชิกก่อนยืนยัน'">
+                                    <i :class="toggling === `room-ct-${room.id}` ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-arrows-rotate'"></i>
                                     {{ room.confirm_type === 'auto' ? 'Auto' : 'Manual' }}
-                                </span>
+                                </button>
                                 <button @click="toggleRoomAccess(room)"
                                     :disabled="toggling === `room-ac-${room.id}`"
                                     :class="room.access_control === '1'
@@ -590,6 +651,14 @@ onMounted(() => fetchAll());
                                 ><i class="text-xs fa-solid" :class="ic"></i></button>
                             </div>
                         </div>
+                        <label class="flex items-start gap-2 p-3 border border-amber-200 bg-amber-50 rounded-lg cursor-pointer">
+                            <input v-model="settingsForm.scan_only" type="checkbox"
+                                class="mt-0.5 rounded border-amber-300 text-amber-600 focus:ring-amber-400" />
+                            <span class="text-xs text-amber-800">
+                                <span class="font-bold block">ห้ามจองผ่านหน้าเว็บ (ต้องสแกน QR ที่ตัวอุปกรณ์เท่านั้น)</span>
+                                ใช้สำหรับโซนที่ต้องการให้ผู้ใช้มาถึงอุปกรณ์จริงก่อนจะจองได้ เช่น เก้าอี้ — หน้าแรกจะยังเห็นตารางว่าง แต่กดจองไม่ได้
+                            </span>
+                        </label>
                         <div class="flex gap-2 justify-end">
                             <button @click="cancelSettings"
                                 class="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold transition-colors">

@@ -11,7 +11,7 @@ class Zone extends Model
     protected $fillable = [
         'pic', 'icon', 'loc_id', 'title', 'title_eng', 'detail',
         'capacity', 'tool', 'min_capacity', 'zone_daily_quota',
-        'time_weekday', 'time_weekend', 'status', 'scan_prefix',
+        'time_weekday', 'time_weekend', 'status', 'scan_prefix', 'scan_only',
     ];
 
     public function location()

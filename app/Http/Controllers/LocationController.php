@@ -55,7 +55,7 @@ class LocationController extends Controller
     {
         $data = Location::select('id', 'pic', 'title', 'title_eng', 'detail', 'status')
             ->with(['zones' => fn($q) => $q
-                ->select('id', 'loc_id', 'pic', 'icon', 'title', 'title_eng', 'detail', 'capacity', 'tool', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'status')
+                ->select('id', 'loc_id', 'pic', 'icon', 'title', 'title_eng', 'detail', 'capacity', 'tool', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'status', 'scan_only')
                 ->with([
                     'tools.tool' => fn($tt) => $tt->select('id', 'name', 'icon'),
                     'rooms' => fn($r) => $r

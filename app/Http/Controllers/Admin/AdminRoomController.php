@@ -18,7 +18,7 @@ class AdminRoomController extends Controller
     {
         $locations = Location::select('id', 'title', 'title_eng', 'status')
             ->with(['zones' => fn($q) => $q
-                ->select('id', 'loc_id', 'title', 'status', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'min_capacity', 'scan_prefix', 'icon')
+                ->select('id', 'loc_id', 'title', 'status', 'zone_daily_quota', 'time_weekday', 'time_weekend', 'min_capacity', 'scan_prefix', 'icon', 'scan_only')
                 ->with([
                     'tools' => fn($t) => $t->select('id', 'zone_id', 'tool_id', 'quantity'),
                     'rooms' => fn($r) => $r
@@ -135,6 +135,13 @@ class AdminRoomController extends Controller
         return response()->json(['access_control' => $room->access_control]);
     }
 
+    public function toggleRoomConfirmType(Room $room)
+    {
+        $room->confirm_type = $room->confirm_type === 'auto' ? 'manual' : 'auto';
+        $room->save();
+        return response()->json(['confirm_type' => $room->confirm_type]);
+    }
+
     public function updateZoneSettings(Request $request, Zone $zone)
     {
         $data = $request->validate([
@@ -143,7 +150,12 @@ class AdminRoomController extends Controller
             'time_weekend'     => 'required|integer|exists:times,id',
             'min_capacity'     => 'required|integer|min:1',
             'icon'             => 'nullable|string|max:60',
+            'scan_only'        => 'nullable|boolean',
         ]);
+
+        if (array_key_exists('scan_only', $data)) {
+            $data['scan_only'] = $data['scan_only'] ? '1' : '0';
+        }
 
         $zone->update($data);
         return response()->json(['message' => 'บันทึกแล้ว']);
