@@ -75,12 +75,12 @@ const handleJoin = async () => {
 <template>
     <div class="flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
 
-        <!-- Top bar -->
-        <div class="px-4 py-2 text-xs text-white bg-gradient-to-r from-rose-400 via-fuchsia-500 to-indigo-500">
+        <!-- Top bar (โทนสีเดียวกับระบบ — พื้นเหลือง amber ตัวหนังสือดำ) -->
+        <div class="px-4 py-2 text-xs bg-amber-400 text-slate-900">
             <div class="flex items-center justify-between mx-auto max-w-lg">
-                <span class="font-semibold text-amber-300">MSU Library — ระบบจองพื้นที่ออนไลน์</span>
-                <span v-if="authUser" class="text-amber-300">
-                    <i class="fa-solid fa-circle-user mr-1"></i>{{ authUser.name }}
+                <span class="font-bold">MSU Library — ระบบจองพื้นที่ออนไลน์</span>
+                <span v-if="authUser">
+                    <i class="mr-1 fa-solid fa-circle-user"></i>{{ authUser.name }}
                 </span>
             </div>
         </div>
@@ -114,14 +114,14 @@ const handleJoin = async () => {
 
                 <!-- Join card -->
                 <div v-else-if="group" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <!-- Header -->
-                    <div class="bg-blue-900 px-6 py-5 text-white">
+                    <!-- Header (โทนสีเดียวกับ modal เลือกห้อง — พื้นเหลือง amber ตัวหนังสือดำ) -->
+                    <div class="px-6 py-5 bg-amber-400 text-slate-900">
                         <div class="flex items-center gap-2 mb-1">
-                            <i class="fa-solid fa-users text-amber-400"></i>
-                            <span class="text-xs font-bold text-amber-400 uppercase tracking-wider">คำเชิญเข้าร่วมกลุ่ม</span>
+                            <i class="fa-solid fa-users"></i>
+                            <span class="text-xs font-bold tracking-wider uppercase">คำเชิญเข้าร่วมกลุ่ม</span>
                         </div>
                         <h1 class="text-base font-bold leading-tight">{{ group.room_title }}</h1>
-                        <p class="text-xs text-slate-300 mt-0.5">{{ group.loc_title }} › {{ group.zone_title }}</p>
+                        <p class="text-xs mt-0.5 text-slate-700">{{ group.loc_title }} › {{ group.zone_title }}</p>
                     </div>
 
                     <div class="p-6 space-y-5">
