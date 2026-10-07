@@ -120,6 +120,9 @@ const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 onMounted(() => window.addEventListener('scroll', onScroll, { passive: true }));
 onUnmounted(() => window.removeEventListener('scroll', onScroll));
 
+// --- เมนูมือถือ (burger) — เมนูหลักเดิมยุบเป็นปุ่มแฮมเบอร์เกอร์บนจอเล็ก ---
+const mobileMenuOpen = ref(false);
+
 // --- 1. ระบบจัดการเปลี่ยนภาษา (Localization Dictionary) ---
 const currentLang = ref("th");
 
@@ -662,8 +665,8 @@ const hideToast = () => {
                     <img src="/imgs/logo.png" alt="MSU Library — Academic Resource Center" class="w-auto h-9" />
                 </div>
 
-                <!-- เมนูหลัก -->
-                <nav class="flex flex-wrap items-center gap-1 text-sm text-slate-600 group">
+                <!-- เมนูหลัก (จอใหญ่) -->
+                <nav class="items-center hidden gap-1 text-sm md:flex text-slate-600 group">
                     <!-- หน้าแรก = หน้าปัจจุบัน (bold+เส้นส้มค้างไว้) แต่พอ hover ไปเมนูอื่นในแถวเดียวกันให้หลบก่อน แล้วกลับมาเมื่อเมาส์ออกจากแถบเมนู -->
                     <a href="#top"
                         class="px-3 py-2 font-bold text-slate-900 transition-all border-b-4 border-amber-400 rounded-t-lg group-hover:font-normal group-hover:text-slate-600 group-hover:border-transparent hover:!font-bold hover:!text-slate-900 hover:!border-amber-400">หน้าแรก</a>
@@ -682,8 +685,18 @@ const hideToast = () => {
                     </a>
                 </nav>
 
-                <!-- ภาษา / เข้าสู่ระบบ -->
-                <div class="flex items-center gap-2">
+                <!-- ปุ่มแฮมเบอร์เกอร์ (จอเล็ก) -->
+                <button
+                    @click="mobileMenuOpen = !mobileMenuOpen"
+                    class="flex items-center justify-center transition-colors rounded-lg w-9 h-9 md:hidden bg-amber-100 hover:bg-amber-100 text-slate-900"
+                    :aria-expanded="mobileMenuOpen"
+                    aria-label="เมนู"
+                >
+                    <i class="fa-solid" :class="mobileMenuOpen ? 'fa-xmark' : 'fa-bars'"></i>
+                </button>
+
+                <!-- ภาษา / เข้าสู่ระบบ (จอใหญ่ — มือถือย้ายไปอยู่ในเมนูแฮมเบอร์เกอร์แทน) -->
+                <div class="items-center hidden gap-2 md:flex">
                     <div class="items-center hidden overflow-hidden text-[10px] font-bold border rounded-lg sm:flex border-slate-200">
                         <button
                             @click="changeLanguage('th')"
@@ -718,6 +731,67 @@ const hideToast = () => {
                     </div>
                 </div>
             </div>
+
+            <!-- เมนูมือถือ (เปิดจากปุ่มแฮมเบอร์เกอร์) -->
+            <Transition name="fade">
+            <div v-if="mobileMenuOpen" class="px-4 pb-3 border-t md:hidden border-slate-100">
+                <nav class="flex flex-col pt-2 text-sm text-slate-600">
+                    <a href="#top" @click="mobileMenuOpen = false"
+                        class="px-3 py-2.5 font-bold text-slate-900 rounded-lg hover:bg-slate-50">หน้าแรก</a>
+                    <button @click="openModal('rules'); mobileMenuOpen = false"
+                        class="px-3 py-2.5 text-left rounded-lg hover:bg-slate-50 hover:text-slate-900">
+                        {{ t("navRules") }}
+                    </button>
+                    <a :href="`${appBase}/pdf/tools.pdf`" target="_blank" rel="noopener noreferrer"
+                        @click="mobileMenuOpen = false"
+                        class="px-3 py-2.5 rounded-lg hover:bg-slate-50 hover:text-slate-900">
+                        {{ t("navManual") }}
+                    </a>
+                    <a href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
+                        target="_blank" rel="noopener noreferrer"
+                        @click="mobileMenuOpen = false"
+                        class="px-3 py-2.5 rounded-lg hover:bg-slate-50 hover:text-slate-900">
+                        {{ t("navFeedback") }}
+                    </a>
+                </nav>
+
+                <!-- ภาษา / เข้าสู่ระบบ (มือถือ) -->
+                <div class="pt-3 mt-2 space-y-2.5 border-t border-slate-100">
+                    <div class="flex items-center overflow-hidden text-xs font-bold border rounded-lg w-fit border-slate-200">
+                        <button
+                            @click="changeLanguage('th')"
+                            :class="currentLang === 'th' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'"
+                            class="px-3 py-1.5 transition-all"
+                        >TH</button>
+                        <button
+                            @click="changeLanguage('en')"
+                            :class="currentLang === 'en' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'"
+                            class="px-3 py-1.5 transition-all"
+                        >EN</button>
+                    </div>
+
+                    <a v-if="!authUser" :href="`${appBase}/auth/google`"
+                        class="bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-all">
+                        <i class="fa-brands fa-google"></i>
+                        <span>{{ t("login") }}</span>
+                    </a>
+                    <div v-else class="space-y-2">
+                        <span class="flex items-center text-xs font-bold text-slate-700">
+                            <i class="mr-1 fa-solid fa-circle-user text-amber-500"></i>{{ authUser.name }}
+                        </span>
+                        <a :href="`${appBase}/my-bookings`" @click="mobileMenuOpen = false"
+                            class="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all">
+                            <i class="fa-solid fa-calendar-check"></i>
+                            <span>การจองของฉัน</span>
+                        </a>
+                        <button
+                            @click="handleLogout"
+                            class="w-full bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-500 px-3 py-2.5 rounded-lg text-xs font-bold transition-all"
+                        >{{ t("logout") }}</button>
+                    </div>
+                </div>
+            </div>
+            </Transition>
         </header>
 
         <!-- ฮีโร่ (สไลด์) -->
@@ -751,7 +825,7 @@ const hideToast = () => {
         <!-- แถบประกาศสำคัญ (เลื่อนวิ่งเป็น loop แบบป้ายข่าว) -->
         <div class="overflow-hidden border-b bg-amber-50 border-amber-100">
             <div class="flex items-center py-2.5 marquee-track w-max">
-                <div class="flex items-center shrink-0 gap-x-6 pr-6 text-xs text-slate-900 whitespace-nowrap">
+                <div class="flex items-center pr-6 text-xs shrink-0 gap-x-6 text-slate-900 whitespace-nowrap">
                     <span class="font-bold shrink-0">
                         <i class="mr-1 fa-solid fa-bullhorn"></i>{{ t("quickStatTitle") }}
                     </span>
@@ -761,7 +835,7 @@ const hideToast = () => {
                     <span class="text-amber-300">•</span>
                     <span>{{ t("ann3") }}</span>
                 </div>
-                <div class="flex items-center shrink-0 gap-x-6 pr-6 text-xs text-slate-900 whitespace-nowrap" aria-hidden="true">
+                <div class="flex items-center pr-6 text-xs shrink-0 gap-x-6 text-slate-900 whitespace-nowrap" aria-hidden="true">
                     <span class="font-bold shrink-0">
                         <i class="mr-1 fa-solid fa-bullhorn"></i>{{ t("quickStatTitle") }}
                     </span>
