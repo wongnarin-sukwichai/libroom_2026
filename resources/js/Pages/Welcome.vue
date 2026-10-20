@@ -137,6 +137,7 @@ const translations = {
         ann1: "กรุณาเข้าเช็คอินภายใน 15 นาทีหลังจากเวลาที่จอง",
         ann2: "การจองห้องใช้เพื่อกิจกรรมทางวิชาการและการเรียนรู้เท่านั้น",
         ann3: "ขอสงวนสิทธิ์การใช้งาน หากไม่ปฏิบัติตามข้อตกลง",
+        ann4: "กรุณาแสดงบัตรและติดต่อเจ้าหน้าที่พร้อมผู้มีรายชื่อตามการจองก่อนเข้าใช้บริการทุกครั้ง",
         mainTitle: "เลือกพื้นที่ให้บริการจอง",
         mainSub:
             "ท่านสามารถเลือกโซนพื้นที่ที่ต้องการใช้งาน เพื่อดูห้องย่อย ค้นหารายละเอียด และทำรายการจองออนไลน์ได้ทันที",
@@ -208,6 +209,7 @@ const translations = {
         ann1: "Please check-in within 15 minutes of your booked time slot.",
         ann2: "Room bookings are strictly for educational and academic use.",
         ann3: "The library reserves the right to deny service for noise violation.",
+        ann4: "Please show your ID card and bring everyone listed in the booking before using the service every time.",
         mainTitle: "Select Booking Area",
         mainSub:
             "Choose a primary area from the list to explore and make an instant online reservation.",
@@ -315,7 +317,6 @@ const openModal = (name) => {
 const closeModal = (name) => {
     modals.value[name] = false;
 };
-
 
 // --- 4. การจัดการสถานะ Auth ---
 const page = usePage();
@@ -685,6 +686,13 @@ const hideToast = () => {
                     </a>
                 </nav>
 
+                <!-- เข้าสู่ระบบ (จอเล็ก เฉพาะตอนยังไม่ login) — อยู่นอก hamburger ด้วย กดจองได้ไวขึ้นไม่ต้องเปิดเมนูก่อน -->
+                <a v-if="!authUser" :href="`${appBase}/auth/google`"
+                    class="bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-all md:hidden">
+                    <i class="fa-brands fa-google"></i>
+                    <span>{{ t("login") }}</span>
+                </a>
+
                 <!-- ปุ่มแฮมเบอร์เกอร์ (จอเล็ก) -->
                 <button
                     @click="mobileMenuOpen = !mobileMenuOpen"
@@ -834,6 +842,8 @@ const hideToast = () => {
                     <span>{{ t("ann2") }}</span>
                     <span class="text-amber-300">•</span>
                     <span>{{ t("ann3") }}</span>
+                    <span class="text-amber-300">•</span>
+                    <span>{{ t("ann4") }}</span>
                 </div>
                 <div class="flex items-center pr-6 text-xs shrink-0 gap-x-6 text-slate-900 whitespace-nowrap" aria-hidden="true">
                     <span class="font-bold shrink-0">
@@ -844,6 +854,8 @@ const hideToast = () => {
                     <span>{{ t("ann2") }}</span>
                     <span class="text-amber-300">•</span>
                     <span>{{ t("ann3") }}</span>
+                    <span class="text-amber-300">•</span>
+                    <span>{{ t("ann4") }}</span>
                 </div>
             </div>
         </div>
