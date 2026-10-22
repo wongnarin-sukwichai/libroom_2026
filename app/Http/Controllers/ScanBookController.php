@@ -71,6 +71,17 @@ class ScanBookController extends Controller
             ]);
         }
 
+        // 1.5 ถูกระงับการจอง — booking เดิมยังเช็คอินได้ (ข้อ 1) แต่จองใหม่ไม่ได้
+        if ($member->isBlocked()) {
+            ScanLog::record($code, $room->id, $member->id, 'blocked');
+            return inertia('ScanBook', [
+                'scanCode'    => $code,
+                'state'       => 'blocked',
+                'room'        => $roomPayload,
+                'blockReason' => $member->block_reason,
+            ]);
+        }
+
         // 2. ตัวเองมี booking active อยู่แล้วช่วงเวลานี้ที่ห้อง/จุดอื่น (กันจองซ้อน)
         if (Quota::hasTimeConflict($member->id, $now->toDateString(), [$now->hour])) {
             ScanLog::record($code, $room->id, $member->id, 'busy_self');
@@ -162,7 +173,8 @@ class ScanBookController extends Controller
         $curHour = $now->hour;
         $zone    = $room->zone;
 
-        if ($room->status === '1' || $zone?->status === '1'
+        if ($member->isBlocked()
+            || $room->status === '1' || $zone?->status === '1'
             || ! BookingWindow::isOpenNow()
             || Holiday::where('d', (string) $now->day)->where('m', (string) $now->month)->exists()) {
             return $back;

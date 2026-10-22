@@ -36,22 +36,12 @@ Route::middleware(['auth:admin', 'role.admin'])->group(function () {
     Route::post('/admin/kiosk-bypass',             [AdminKioskController::class, 'store']);
     Route::post('/admin/kiosk-bypass/{bypass}/toggle',  [AdminKioskController::class, 'toggle']);
     Route::delete('/admin/kiosk-bypass/{bypass}',  [AdminKioskController::class, 'destroy']);
-});
 
-Route::middleware('auth:admin')->group(function () {
+    // โมดูล "ตั้งค่าระบบ" — admin เท่านั้น
     Route::get('/admin/members',                      [AdminMemberController::class, 'index']);
     Route::put('/admin/members/{member}/code',        [AdminMemberController::class, 'updateCode']);
-    Route::get('/admin/overview-stats',   [AdminOverviewController::class, 'stats']);
-    Route::get('/admin/overview-service', [AdminOverviewController::class, 'serviceStats']);
-    Route::get('/admin/overview-most',    [AdminOverviewController::class, 'mostStats']);
-    Route::get('/admin/bookings',              [AdminBookingController::class, 'index']);
-    Route::get('/admin/bookings/room-day',     [AdminBookingController::class, 'roomDay']);
-    Route::get('/admin/bookings/board-summary', [AdminBookingController::class, 'boardSummary']);
-    Route::post('/admin/bookings/staff',   [AdminBookingController::class, 'staffStore']);
-    Route::post('/admin/bookings/approve', [AdminBookingController::class, 'approveSession']);
-    Route::post('/admin/bookings/reject',  [AdminBookingController::class, 'rejectSession']);
-    Route::post('/admin/bookings/checkin', [AdminBookingController::class, 'checkinSession']);
-    Route::post('/admin/bookings/cancel',  [AdminBookingController::class, 'cancelSession']);
+    Route::post('/admin/members/{member}/block',      [AdminMemberController::class, 'block']);
+    Route::post('/admin/members/{member}/unblock',    [AdminMemberController::class, 'unblock']);
 
     Route::get('/admin/holidays',              [AdminHolidayController::class, 'index']);
     Route::post('/admin/holidays',             [AdminHolidayController::class, 'store']);
@@ -71,7 +61,6 @@ Route::middleware('auth:admin')->group(function () {
     Route::put('/admin/times/{time}',   [AdminTimeController::class, 'update']);
     Route::delete('/admin/times/{time}', [AdminTimeController::class, 'destroy']);
 
-    Route::get('/admin/rooms',                              [AdminRoomController::class, 'index']);
     Route::post('/admin/locations/{location}/toggle',       [AdminRoomController::class, 'toggleLocation']);
     Route::post('/admin/zones/{zone}/toggle',               [AdminRoomController::class, 'toggleZone']);
     Route::post('/admin/rooms/{room}/toggle',               [AdminRoomController::class, 'toggleRoom']);
@@ -87,6 +76,24 @@ Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/rooms/{room}/scan-code',            [AdminRoomController::class, 'generateRoomScanCode']);
     Route::put('/admin/rooms/{room}/scan-code',             [AdminRoomController::class, 'updateRoomScanCode']);
     Route::get('/admin/zones/{zone}/qr-sheet',              [AdminRoomController::class, 'qrSheet'])->name('admin.qr-sheet');
+});
+
+// admin + staff — งานหน้าเคาน์เตอร์
+Route::middleware('auth:admin')->group(function () {
+    Route::get('/admin/overview-stats',   [AdminOverviewController::class, 'stats']);
+    Route::get('/admin/overview-service', [AdminOverviewController::class, 'serviceStats']);
+    Route::get('/admin/overview-most',    [AdminOverviewController::class, 'mostStats']);
+    Route::get('/admin/bookings',              [AdminBookingController::class, 'index']);
+    Route::get('/admin/bookings/room-day',     [AdminBookingController::class, 'roomDay']);
+    Route::get('/admin/bookings/board-summary', [AdminBookingController::class, 'boardSummary']);
+    Route::post('/admin/bookings/staff',   [AdminBookingController::class, 'staffStore']);
+    Route::post('/admin/bookings/approve', [AdminBookingController::class, 'approveSession']);
+    Route::post('/admin/bookings/reject',  [AdminBookingController::class, 'rejectSession']);
+    Route::post('/admin/bookings/checkin', [AdminBookingController::class, 'checkinSession']);
+    Route::post('/admin/bookings/cancel',  [AdminBookingController::class, 'cancelSession']);
+
+    // ผังห้อง (BookingBoard) ใช้รายการห้อง — read-only
+    Route::get('/admin/rooms', [AdminRoomController::class, 'index']);
 });
 
 // Dev only — simulate member/admin login (ลบออกก่อน deploy จริง)

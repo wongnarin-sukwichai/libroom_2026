@@ -81,7 +81,9 @@ bookings
 
 members    (login ด้วย Google OAuth, มี code สำหรับ kiosk)
   ├── faculty, branch, type   ← ดึงจากระบบ patron ด้วยรหัสนิสิต (best-effort, ไม่มีก็จองได้)
-  └── patron_synced_at        ครั้งล่าสุดที่ลองดึง (set แม้ไม่พบ กันยิงซ้ำ)
+  ├── patron_synced_at        ครั้งล่าสุดที่ลองดึง (set แม้ไม่พบ กันยิงซ้ำ)
+  └── blocked_at, block_reason, blocked_by  ← admin ระงับสิทธิ์จอง (blocked_at != null = ถูก block)
+        → store/join ตอบ 403 + ข้อความกำกับ, scan QR แสดง state `blocked` (booking เดิมยังเช็คอินได้)
 holidays   (วันหยุดนักขัตฤกษ์)
 kiosk_bypass_codes  (รหัสพิเศษสำหรับเจ้าหน้าที่ ผ่านได้ตลอด)
 settings   (key–value config ทั้งระบบ)
@@ -155,6 +157,8 @@ settings   (key–value config ทั้งระบบ)
 
 ### Admin (auth:admin)
 
+**สิทธิ์ admin vs staff**: staff เห็นแค่ ภาพรวม + จัดการคำขอจอง (+ GET `/admin/rooms` สำหรับผังห้อง) — โมดูล "ตั้งค่าระบบ" (ผู้ดูแลระบบ, สมาชิก, Kiosk Bypass, พื้นที่, แบนเนอร์, วันหยุด, เวลาให้บริการ) อยู่หลัง middleware `role.admin` ทั้ง API และเมนู (`ADMIN_ONLY_TABS` ใน Dashboard.vue)
+
 | Method | URL | คำอธิบาย |
 |--------|-----|----------|
 | GET | `/dashboard` | Admin dashboard (SPA) |
@@ -175,6 +179,7 @@ settings   (key–value config ทั้งระบบ)
 | GET/POST/DELETE | `/admin/holidays` | จัดการวันหยุด |
 | GET/POST/PUT/DELETE | `/admin/times` | จัดการ service hours |
 | GET/PUT | `/admin/members` | จัดการ members |
+| POST | `/admin/members/{member}/block` \| `/unblock` | ระงับ/ปลดสิทธิ์การจอง (block ต้องมี `reason`) |
 | GET/POST/PUT/DELETE | `/admin/users` | จัดการ admin users |
 | GET/POST/DELETE | `/admin/kiosk-bypass` | จัดการ kiosk bypass codes |
 | GET/PUT | `/admin/settings` | ช่วงเวลาเปิด-ปิดระบบจอง + โควตารวมทุกโซน/วัน (global) — แท็บ Service Hours |

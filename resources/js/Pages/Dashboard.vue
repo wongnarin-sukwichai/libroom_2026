@@ -79,8 +79,10 @@ const showToast = (title: string, desc: string, isError = false) => {
 const toggleSidebar = () => {
     isSidebarCollapsed.value = !isSidebarCollapsed.value;
 };
+// โมดูล "ตั้งค่าระบบ" — admin เท่านั้น (backend บังคับด้วย middleware role.admin)
+const ADMIN_ONLY_TABS: TabId[] = ['admin_users', 'members', 'kiosk', 'rooms', 'banners', 'holidays', 'service_hours'];
 const switchTab = (id: TabId) => {
-    if (id === 'admin_users' && !isAdmin.value) return;
+    if (ADMIN_ONLY_TABS.includes(id) && !isAdmin.value) return;
     currentTab.value = id;
     if (isMobile.value) isSidebarCollapsed.value = true;
 };
@@ -295,7 +297,36 @@ const logoutAdmin = async () => {
                         การจัดการ
                     </p>
                     <button
-                        v-if="isAdmin"
+                        @click="switchTab('bookings')"
+                        :class="
+                            currentTab === 'bookings'
+                                ? 'nav-active text-white'
+                                : 'hover:bg-slate-800 hover:text-white'
+                        "
+                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl"
+                    >
+                        <i
+                            class="w-4 text-sm text-center fa-solid fa-calendar-check"
+                            :class="currentTab === 'bookings' ? 'text-amber-400' : ''"
+                        ></i>
+                        <span v-show="!isSidebarCollapsed">จัดการคำขอจอง</span>
+                        <span
+                            v-if="pendingCount > 0"
+                            :class="isSidebarCollapsed ? 'absolute top-1.5 right-1.5' : 'ml-auto'"
+                            class="bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold"
+                            >{{ pendingCount }}</span
+                        >
+                    </button>
+
+                    <!-- Section: ตั้งค่าระบบ (admin เท่านั้น) -->
+                    <template v-if="isAdmin">
+                    <p
+                        v-show="!isSidebarCollapsed"
+                        class="px-3 pt-4 pb-1 text-[9px] font-bold uppercase tracking-widest text-slate-500"
+                    >
+                        ตั้งค่าระบบ
+                    </p>
+                    <button
                         @click="switchTab('admin_users')"
                         :class="
                             currentTab === 'admin_users'
@@ -326,29 +357,6 @@ const logoutAdmin = async () => {
                         <span v-show="!isSidebarCollapsed">จัดการสมาชิก</span>
                     </button>
                     <button
-                        @click="switchTab('bookings')"
-                        :class="
-                            currentTab === 'bookings'
-                                ? 'nav-active text-white'
-                                : 'hover:bg-slate-800 hover:text-white'
-                        "
-                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl"
-                    >
-                        <i
-                            class="w-4 text-sm text-center fa-solid fa-calendar-check"
-                            :class="currentTab === 'bookings' ? 'text-amber-400' : ''"
-                        ></i>
-                        <span v-show="!isSidebarCollapsed">จัดการคำขอจอง</span>
-                        <span
-                            v-if="pendingCount > 0"
-                            :class="isSidebarCollapsed ? 'absolute top-1.5 right-1.5' : 'ml-auto'"
-                            class="bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold"
-                            >{{ pendingCount }}</span
-                        >
-                    </button>
-
-                    <button
-                        v-if="isAdmin"
                         @click="switchTab('kiosk')"
                         :class="
                             currentTab === 'kiosk'
@@ -363,14 +371,6 @@ const logoutAdmin = async () => {
                         ></i>
                         <span v-show="!isSidebarCollapsed">Kiosk Bypass</span>
                     </button>
-
-                    <!-- Section: ตั้งค่าระบบ -->
-                    <p
-                        v-show="!isSidebarCollapsed"
-                        class="px-3 pt-4 pb-1 text-[9px] font-bold uppercase tracking-widest text-slate-500"
-                    >
-                        ตั้งค่าระบบ
-                    </p>
                     <button
                         @click="switchTab('rooms')"
                         :class="
@@ -431,6 +431,7 @@ const logoutAdmin = async () => {
                         ></i>
                         <span v-show="!isSidebarCollapsed">เวลาให้บริการ</span>
                     </button>
+                    </template>
 
                     <!-- Section: รายงาน -->
                     <p

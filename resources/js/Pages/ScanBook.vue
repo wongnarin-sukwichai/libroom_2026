@@ -13,6 +13,7 @@ const props = defineProps({
     quotaLeft: { type: Number, default: 0 },
     zoneQuota: { type: Number, default: 3 },
     window:    { type: Object, default: null },
+    blockReason: { type: String, default: null },
 });
 
 const appBase  = window.APP_BASE ?? "";
@@ -44,7 +45,8 @@ const STATE = {
     window_closed:      { icon: "fa-clock",            color: "text-orange-500",title: "อยู่นอกเวลาทำการจอง",       desc: "" },
     holiday:           { icon: "fa-calendar-xmark",    color: "text-red-500",   title: "งดให้บริการวันนี้",          desc: "เนื่องในวันหยุด กรุณากลับมาในวันทำการ" },
     quota_exceeded:    { icon: "fa-circle-exclamation",color: "text-amber-500", title: "ใช้โควตาโซนนี้ครบแล้ว",      desc: "คุณจองครบชั่วโมงสูงสุดต่อวันในโซนนี้แล้ว" },
-    no_slot:           { icon: "fa-calendar-xmark",    color: "text-slate-400", title: "ไม่มีช่วงเวลาเหลือวันนี้",   desc: "หมดเวลาให้บริการของวันนี้แล้ว" },
+    blocked:           { icon: "fa-user-lock",         color: "text-red-500",   title: "บัญชีถูกระงับสิทธิ์การจอง",  desc: "กรุณาติดต่อเจ้าหน้าที่" },
+    no_slot:          { icon: "fa-calendar-xmark",    color: "text-slate-400", title: "ไม่มีช่วงเวลาเหลือวันนี้",   desc: "หมดเวลาให้บริการของวันนี้แล้ว" },
     error:             { icon: "fa-triangle-exclamation", color: "text-slate-400", title: "เกิดข้อผิดพลาด",         desc: "กรุณาลองใหม่อีกครั้ง" },
 };
 const info = computed(() => STATE[props.state] ?? STATE.error);
@@ -131,6 +133,10 @@ const isCheckedIn = computed(() => props.state === "checked_in" || props.state =
                 <div v-if="state === 'window_closed' && window" class="text-sm text-slate-600 mt-1">
                     ระบบเปิดจอง {{ window.open }} – {{ window.close }} น.
                     <div class="text-xs text-slate-400 mt-0.5">(เวลาระบบตอนนี้ {{ window.server_time }} น.)</div>
+                </div>
+                <div v-else-if="state === 'blocked'" class="text-sm text-slate-600 mt-1">
+                    <div v-if="blockReason" class="font-semibold text-red-600">{{ blockReason }}</div>
+                    <div class="text-xs text-slate-400 mt-0.5">{{ info.desc }}</div>
                 </div>
                 <div v-else-if="info.desc" class="text-sm text-slate-500 mt-1">{{ info.desc }}</div>
 

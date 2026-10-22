@@ -156,6 +156,10 @@ class BookingController extends Controller
         $date    = $today->format('Y-m-d');
         $timeIds = collect($data['time_ids'])->sort()->values()->all();
 
+        if ($member->isBlocked()) {
+            return response()->json(['message' => $member->blockedMessage()], 403);
+        }
+
         // เช็คหน้าต่างเวลาเปิดให้จอง (global) — staff/admin ใช้ /admin/bookings/staff จึงไม่โดน gate นี้
         $window = BookingWindow::status();
         if (! $window['is_open_now']) {
@@ -341,6 +345,10 @@ class BookingController extends Controller
     public function join(string $token)
     {
         $member = Auth::user();
+
+        if ($member->isBlocked()) {
+            return response()->json(['message' => $member->blockedMessage()], 403);
+        }
 
         $group = BookingGroup::where('join_token', $token)
             ->lockForUpdate()

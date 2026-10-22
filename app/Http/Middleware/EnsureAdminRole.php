@@ -18,6 +18,9 @@ class EnsureAdminRole
         $admin = $request->user('admin');
 
         if (! $admin || $admin->role !== 'admin') {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'คุณไม่มีสิทธิ์เข้าถึงส่วนนี้'], 403);
+            }
             return redirect()->route('admin.dashboard')
                 ->with('error', 'คุณไม่มีสิทธิ์เข้าถึงส่วนนี้');
         }
