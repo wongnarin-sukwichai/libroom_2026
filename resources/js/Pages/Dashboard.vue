@@ -12,6 +12,7 @@ import ServiceHours from "../Components/Admin/ServiceHours.vue";
 import AdminUsers from "../Components/Admin/AdminUsers.vue";
 import KioskAccess from "../Components/Admin/KioskAccess.vue";
 import Banners from "../Components/Admin/Banners.vue";
+import UsageStats from "../Components/Admin/UsageStats.vue";
 
 const appBase = (window as any).APP_BASE ?? "";
 
@@ -30,7 +31,8 @@ type TabId =
     | "holidays"
     | "service_hours"
     | "admin_users"
-    | "kiosk";
+    | "kiosk"
+    | "usage_stats";
 
 // Auth
 const page = usePage();
@@ -440,6 +442,21 @@ const logoutAdmin = async () => {
                     >
                         รายงาน & ข้อมูล
                     </p>
+                    <button
+                        @click="switchTab('usage_stats')"
+                        :class="
+                            currentTab === 'usage_stats'
+                                ? 'nav-active text-white'
+                                : 'hover:bg-slate-800 hover:text-white'
+                        "
+                        class="relative flex items-center w-full gap-3 px-4 py-3 text-xs font-semibold transition-all rounded-xl"
+                    >
+                        <i
+                            class="w-4 text-sm text-center fa-solid fa-chart-column"
+                            :class="currentTab === 'usage_stats' ? 'text-amber-400' : ''"
+                        ></i>
+                        <span v-show="!isSidebarCollapsed">สถิติการเข้าใช้งาน</span>
+                    </button>
                     <a
                         href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
                         target="_blank"
@@ -583,6 +600,7 @@ const logoutAdmin = async () => {
                         <ServiceHours v-else-if="currentTab === 'service_hours'" />
                         <AdminUsers v-else-if="currentTab === 'admin_users'" />
                         <KioskAccess v-else-if="currentTab === 'kiosk'" />
+                        <UsageStats v-else-if="currentTab === 'usage_stats'" />
                     </div>
                 </Transition>
             </main>

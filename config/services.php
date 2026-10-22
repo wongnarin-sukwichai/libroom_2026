@@ -44,6 +44,7 @@ return [
     'libroom' => [
         'api_token'    => env('LIBROOM_API_TOKEN'),     // token สำหรับเรียก external API (ระบบเก่า)
         'v2_api_token' => env('LIBROOM_V2_API_TOKEN'),  // token สำหรับ API ของระบบใหม่นี้
+        'stats_api_token' => env('LIBROOM_STATS_API_TOKEN'), // token สำหรับ GET /api/stats/usage (ระบบภายนอกดึงสถิติ) — แยกจาก kiosk
     ],
 
     // ดึง faculty/branch จากระบบ patron ของสำนักวิทยบริการ (เทียบด้วยรหัสนิสิต)

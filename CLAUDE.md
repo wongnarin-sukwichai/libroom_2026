@@ -192,6 +192,9 @@ settings   (key–value config ทั้งระบบ)
 | Method | URL | คำอธิบาย |
 |--------|-----|----------|
 | GET | `/api/getAccess/{roomId}/{code}` | Kiosk ตรวจสิทธิ์เข้าห้อง |
+| GET | `/api/stats/usage` | สถิติการเข้าใช้งาน **เดือนปัจจุบัน** ให้ระบบภายนอก — token แยก `LIBROOM_STATS_API_TOKEN` (`api.token:stats_api_token`) |
+
+**สถิติการเข้าใช้งาน** (`App\Support\UsageStats`, ใช้ร่วม admin + API): นับ `bookings.status = checked_in`, 1 คน × 1 ห้อง × 1 วัน = 1 คน, จัดกลุ่ม location → zone รายเดือน — staff booking ไม่ถูกนับ (ไม่มีแถว bookings). หน้า admin = แท็บ "สถิติการเข้าใช้งาน" (admin+staff เห็น) → `GET /admin/stats/usage?from=Y-m&to=Y-m` (default เดือนนี้, สูงสุด 24 เดือน)
 
 ---
 

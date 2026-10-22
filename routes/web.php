@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\AdminMemberController;
 use App\Http\Controllers\Admin\AdminOverviewController;
 use App\Http\Controllers\Admin\AdminRoomController;
 use App\Http\Controllers\Admin\AdminSettingController;
+use App\Http\Controllers\Admin\AdminStatsController;
 use App\Http\Controllers\Admin\AdminTimeController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Auth\GoogleController;
@@ -91,6 +92,8 @@ Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/bookings/reject',  [AdminBookingController::class, 'rejectSession']);
     Route::post('/admin/bookings/checkin', [AdminBookingController::class, 'checkinSession']);
     Route::post('/admin/bookings/cancel',  [AdminBookingController::class, 'cancelSession']);
+
+    Route::get('/admin/stats/usage', [AdminStatsController::class, 'usage']);
 
     // ผังห้อง (BookingBoard) ใช้รายการห้อง — read-only
     Route::get('/admin/rooms', [AdminRoomController::class, 'index']);
