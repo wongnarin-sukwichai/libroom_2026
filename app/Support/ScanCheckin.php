@@ -57,9 +57,9 @@ class ScanCheckin
             return self::PENDING_STAFF;
         }
 
-        DB::transaction(function () use ($room, $today, $curHour, $member) {
-            $targets = BookingGroup::where('room_id', $room->id)
-                ->where('date', $today)
+        DB::transaction(function () use ($current, $curHour, $member) {
+            // เฉพาะ slot ที่เหลือใน "รอบการจองนี้" — ไม่ลากรอบอื่นของห้องเดิมวันเดิมมาเช็คอินด้วย
+            $targets = $current->sessionSiblings()
                 ->where('time_id', '>=', $curHour)
                 ->whereIn('status', ['waiting_confirm', 'confirmed'])
                 ->lockForUpdate()

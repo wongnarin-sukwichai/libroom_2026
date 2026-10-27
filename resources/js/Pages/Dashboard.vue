@@ -66,7 +66,37 @@ onUnmounted(() => window.removeEventListener("resize", updateMobile));
 
 const currentTab = ref<TabId>("overview");
 
+// ─── Badge "รอเจ้าหน้าที่" — โหลดตั้งแต่เปิดหน้า + poll ทุก 30 วิ, เพิ่มขึ้น = ไอคอนสั่น ───
 const pendingCount = ref(0);
+const bellShake    = ref(false);
+let pendingTimer: ReturnType<typeof setInterval> | null = null;
+
+watch(pendingCount, (now, before) => {
+    if (now > before) {
+        bellShake.value = false;
+        requestAnimationFrame(() => (bellShake.value = true));
+    }
+});
+
+const fetchPendingCount = async () => {
+    if (document.hidden) return; // แท็บไม่ได้เปิดดูอยู่ ไม่ต้องยิง
+    try {
+        const { data } = await axios.get("/admin/bookings/pending-count");
+        pendingCount.value = data.count ?? 0;
+    } catch {
+        // เงียบไว้ — รอบหน้าลองใหม่
+    }
+};
+
+onMounted(() => {
+    fetchPendingCount();
+    pendingTimer = setInterval(fetchPendingCount, 30_000);
+    document.addEventListener("visibilitychange", fetchPendingCount);
+});
+onUnmounted(() => {
+    if (pendingTimer) clearInterval(pendingTimer);
+    document.removeEventListener("visibilitychange", fetchPendingCount);
+});
 
 // Toast
 const toast = ref<ToastState>({ show: false, title: "", desc: "", isError: false });
@@ -106,7 +136,7 @@ const sbBookedIds        = ref<number[]>([]);
 const sbSelectedTimeIds  = ref<number[]>([]);
 const sbFetchingSlots    = ref(false);
 
-const sbTodayStr = new Date().toISOString().split('T')[0];
+const sbTodayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })(); // เวลาเครื่อง ไม่ใช่ UTC
 
 const openStaffBooking = async () => {
     showStaffBooking.value   = true;
@@ -309,15 +339,23 @@ const logoutAdmin = async () => {
                     >
                         <i
                             class="w-4 text-sm text-center fa-solid fa-calendar-check"
-                            :class="currentTab === 'bookings' ? 'text-amber-400' : ''"
+                            :class="[
+                                currentTab === 'bookings' || pendingCount > 0 ? 'text-amber-400' : '',
+                                bellShake ? 'bell-shake' : '',
+                            ]"
+                            @animationend="bellShake = false"
                         ></i>
                         <span v-show="!isSidebarCollapsed">จัดการคำขอจอง</span>
                         <span
                             v-if="pendingCount > 0"
                             :class="isSidebarCollapsed ? 'absolute top-1.5 right-1.5' : 'ml-auto'"
-                            class="bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold"
-                            >{{ pendingCount }}</span
+                            class="relative flex"
+                            :title="`${pendingCount} รายการรอเจ้าหน้าที่`"
                         >
+                            <!-- วงสัญญาณกระเพื่อมตลอดเวลาที่มีงานค้าง -->
+                            <span class="absolute inset-0 rounded-full bg-amber-400 opacity-75 animate-ping motion-reduce:animate-none"></span>
+                            <span class="relative bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold">{{ pendingCount }}</span>
+                        </span>
                     </button>
 
                     <!-- Section: ตั้งค่าระบบ (admin เท่านั้น) -->
@@ -457,6 +495,7 @@ const logoutAdmin = async () => {
                         ></i>
                         <span v-show="!isSidebarCollapsed">สถิติการเข้าใช้งาน</span>
                     </button>
+                    <!-- ซ่อนผลประเมิน & รายงานไว้ก่อน (2026-10-26) — เปิดกลับ: เอา comment ออก
                     <a
                         href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
                         target="_blank"
@@ -466,6 +505,7 @@ const logoutAdmin = async () => {
                         <i class="w-4 text-sm text-center fa-solid fa-star-half-stroke"></i>
                         <span v-show="!isSidebarCollapsed">ผลประเมิน & รายงาน</span>
                     </a>
+                    -->
                     <a
                         :href="`${appBase}/pdf/tools.pdf`"
                         target="_blank"
@@ -781,6 +821,22 @@ const logoutAdmin = async () => {
 }
 .nav-active {
     background-color: #1e293b;
+}
+/* ไอคอนเมนูคำขอจองสั่นเมื่อมีคำขอใหม่เพิ่มขึ้น */
+.bell-shake {
+    animation: bell-shake 0.9s ease-in-out 2;
+    transform-origin: 50% 0;
+}
+@keyframes bell-shake {
+    0%, 100% { transform: rotate(0); }
+    15% { transform: rotate(18deg); }
+    30% { transform: rotate(-16deg); }
+    45% { transform: rotate(12deg); }
+    60% { transform: rotate(-8deg); }
+    75% { transform: rotate(4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .bell-shake { animation: none; }
 }
 .nav-active::before {
     content: "";

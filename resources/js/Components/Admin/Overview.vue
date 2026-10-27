@@ -14,18 +14,21 @@ const activeRooms    = ref(0);
 const totalRooms     = ref(0);
 const totalMembers   = ref(0);
 
-// getService — สถิติการเข้าใช้บริการรายพื้นที่ (Location) เดือนนี้
-interface ServiceData { arec?: number; dlp?: number; space?: number }
-const serviceData    = ref<ServiceData>({});
+// สถิติการเข้าใช้บริการรายอาคาร เดือนนี้ — จากระบบปัจจุบัน (UsageStats เดียวกับแท็บ "สถิติการเข้าใช้งาน")
+// รายชื่ออาคารมาจาก DB ไม่ฝังในโค้ด / สีวนตามลำดับ
+interface ServiceLoc { id: number; title: string; total: number }
+const serviceLocs    = ref<ServiceLoc[]>([]);
+const serviceUnit    = ref('คน');
+const serviceError   = ref(false);
 const serviceLoading = ref(true);
-const SERVICE_META: Record<string, { label: string; barClass: string; textClass: string }> = {
-    arec:  { label: 'อาคารวิทยบริการ A',  barClass: 'from-blue-700 to-blue-950',      textClass: 'text-blue-900' },
-    dlp:   { label: 'อาคารวิทยบริการ B',  barClass: 'from-orange-400 to-amber-500',   textClass: 'text-orange-500' },
-    space: { label: 'MSU Space',            barClass: 'from-green-500 to-emerald-600',  textClass: 'text-green-600' },
-};
-const serviceMax = computed(() =>
-    Math.max(1, ...Object.values(serviceData.value).map(v => v ?? 0))
-);
+const SERVICE_COLORS = [
+    { barClass: 'from-blue-700 to-blue-950',     textClass: 'text-blue-900' },
+    { barClass: 'from-orange-400 to-amber-500',  textClass: 'text-orange-500' },
+    { barClass: 'from-green-500 to-emerald-600', textClass: 'text-green-600' },
+    { barClass: 'from-violet-500 to-purple-700', textClass: 'text-violet-600' },
+];
+const serviceColor = (i: number) => SERVICE_COLORS[i % SERVICE_COLORS.length];
+const serviceMax = computed(() => Math.max(1, ...serviceLocs.value.map(l => l.total)));
 
 // getMost — top 5 zone จาก DB เดือนนี้
 interface ZoneStat { title: string; count: number }
@@ -50,9 +53,11 @@ onMounted(async () => {
         totalRooms.value     = statsRes.value.data.total_rooms;
         totalMembers.value   = statsRes.value.data.total_members;
     }
-    if (svcRes.status === 'fulfilled') {
-    const d = svcRes.value.data;
-    serviceData.value = (d && typeof d === 'object' && !Array.isArray(d)) ? d : {};
+    if (svcRes.status === 'fulfilled' && Array.isArray(svcRes.value.data?.locations)) {
+        serviceLocs.value = svcRes.value.data.locations;
+        serviceUnit.value = svcRes.value.data.unit ?? 'คน';
+    } else {
+        serviceError.value = true;
     }
     serviceLoading.value = false;
 
@@ -177,14 +182,14 @@ if (mostRes.status === 'fulfilled') {
         <!-- Charts (live data) -->
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
 
-            <!-- getService: สถิติการเข้าใช้บริการรายพื้นที่ เดือนนี้ -->
+            <!-- สถิติการเข้าใช้บริการรายอาคาร เดือนนี้ (ระบบปัจจุบัน) -->
             <div class="p-6 space-y-4 bg-white border shadow-sm lg:col-span-8 rounded-2xl border-slate-200">
                 <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                     <h4 class="flex items-center gap-2 text-sm font-bold text-slate-900">
                         <i class="text-blue-900 fa-solid fa-chart-column"></i>
                         สถิติการเข้าใช้บริการรายพื้นที่
                     </h4>
-                    <span class="text-[11px] text-slate-400">{{ thaiMonth }} · หน่วย: ครั้ง</span>
+                    <span class="text-[11px] text-slate-400" title="นับผู้ที่เช็คอินแล้ว · 1 คน ต่อ 1 ห้อง ต่อ 1 วัน">{{ thaiMonth }} · หน่วย: {{ serviceUnit }}</span>
                 </div>
 
                 <!-- Loading skeleton -->
@@ -196,27 +201,27 @@ if (mostRes.status === 'fulfilled') {
                 </div>
 
                 <!-- No data -->
-                <div v-else-if="!Object.keys(serviceData).length" class="py-6 text-xs text-center text-slate-400">
+                <div v-else-if="serviceError" class="py-6 text-xs text-center text-slate-400">
                     <i class="mr-1 fa-solid fa-triangle-exclamation"></i> ไม่สามารถโหลดข้อมูลได้
                 </div>
 
                 <!-- Bars -->
                 <div v-else class="pt-2 space-y-4">
                     <div
-                        v-for="(meta, key) in SERVICE_META" :key="key"
+                        v-for="(loc, i) in serviceLocs" :key="loc.id"
                         class="space-y-1.5"
                     >
                         <div class="flex justify-between text-xs">
-                            <span class="font-medium text-slate-700">{{ meta.label }}</span>
-                            <span class="font-bold" :class="meta.textClass">
-                                {{ (serviceData[key as keyof ServiceData] ?? 0).toLocaleString() }} ครั้ง
+                            <span class="font-medium text-slate-700">{{ loc.title }}</span>
+                            <span class="font-bold" :class="serviceColor(i).textClass">
+                                {{ loc.total.toLocaleString() }} {{ serviceUnit }}
                             </span>
                         </div>
                         <div class="w-full h-3 overflow-hidden rounded-full bg-slate-100">
                             <div
                                 class="h-full transition-all duration-700 rounded-full bg-gradient-to-r"
-                                :class="meta.barClass"
-                                :style="{ width: Math.round(((serviceData[key as keyof ServiceData] ?? 0) / serviceMax) * 100) + '%' }"
+                                :class="serviceColor(i).barClass"
+                                :style="{ width: Math.round((loc.total / serviceMax) * 100) + '%' }"
                             ></div>
                         </div>
                     </div>

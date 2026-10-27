@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import axios from "axios";
 import Swal from "sweetalert2";
+import { canEndEarly, canCancelWhole, promptEndEarly } from "./endEarly";
 
 interface BRoom { id: number; title: string; confirm_type: "auto" | "manual"; access_control: "0" | "1"; status: "0" | "1" }
 interface BZone { id: number; title: string; status: "0" | "1"; rooms: BRoom[] }
@@ -34,7 +35,7 @@ type Summary = Record<number, { pending: number; booked: number }>;
 
 const props = defineProps<{ date: string }>();
 
-const todayStr = () => new Date().toISOString().split("T")[0];
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }; // เวลาเครื่อง ไม่ใช่ UTC
 
 const locations   = ref<BLoc[]>([]);
 const activeLoc   = ref<BLoc | null>(null);
@@ -135,14 +136,35 @@ function canApprove(g: SlotGroup) {
     return day.value?.room.confirm_type === "manual" &&
         (g.status === "pending" || g.status === "waiting_confirm");
 }
+// ห้องมี kiosk ก็ให้เจ้าหน้าที่เช็คอินแทนได้ (นิสิตมาเคาน์เตอร์ / ไม่มีบัตร / kiosk เสีย)
 function canCheckin(g: SlotGroup) {
     return g.status === "confirmed" &&
-        day.value?.room.access_control === "0" &&
         !g.checked_in &&
         isToday.value;
 }
+// รอบที่เริ่มใช้แล้ว → ซ่อน "ยกเลิก" (ลบประวัติเช็คอิน/สถิติ) ใช้ "เลิกใช้ก่อนเวลา" แทน
+const sessionOf = (g: SlotGroup) => ({ status: g.status, date: props.date, start_hour: g.start_hour, end_hour: g.end_hour });
 function canCancel(g: SlotGroup) {
-    return g.status === "confirmed";
+    return canCancelWhole(sessionOf(g));
+}
+function canEnd(g: SlotGroup) {
+    return canEndEarly(sessionOf(g));
+}
+async function endEarly(g: SlotGroup) {
+    const reason = await promptEndEarly(sessionOf(g), day.value?.room.title ?? "", g.lead_name);
+    if (reason === null) return;
+    acting.value = true;
+    try {
+        const { data } = await axios.post("/admin/bookings/end-early", { ids: g.ids, reason: reason || undefined });
+        await Promise.all([fetchDay(), fetchSummary()]);
+        const h = slotModal.value?.hour;
+        slotModal.value = h != null ? day.value?.slots.find(s => s.hour === h) ?? null : null;
+        Swal.fire({ title: "เลิกใช้ก่อนเวลาแล้ว", text: data.message, icon: "success", timer: 1600, showConfirmButton: false });
+    } catch (e: any) {
+        Swal.fire("ไม่สำเร็จ", e.response?.data?.message ?? "เกิดข้อผิดพลาด", "error");
+    } finally {
+        acting.value = false;
+    }
 }
 
 async function runAction(url: string, g: SlotGroup, confirmText: string, okText: string, color: string, icon: string, withReason = false) {
@@ -365,6 +387,11 @@ onMounted(async () => {
                             <button v-if="canCheckin(g)" :disabled="acting" @click="checkin(g)"
                                 class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] disabled:opacity-50">
                                 <i class="mr-1 fa-solid fa-door-open"></i>เช็คอิน
+                            </button>
+                            <button v-if="canEnd(g)" :disabled="acting" @click="endEarly(g)"
+                                title="คืนชั่วโมงที่ยังไม่เริ่ม — ชั่วโมงที่ใช้แล้วเก็บไว้"
+                                class="bg-white hover:bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-blue-200 disabled:opacity-50">
+                                <i class="mr-1 fa-solid fa-hourglass-end"></i>เลิกใช้ก่อนเวลา
                             </button>
                             <button v-if="canCancel(g)" :disabled="acting" @click="cancel(g)"
                                 class="bg-white hover:bg-red-50 text-red-500 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-red-200 disabled:opacity-50">

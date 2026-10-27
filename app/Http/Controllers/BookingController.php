@@ -122,10 +122,8 @@ class BookingController extends Controller
         }
 
         DB::transaction(function () use ($group, $member) {
-            // ยกเลิกทุก slot ในเซสชันเดียวกัน (room+date+lead)
-            $siblings = BookingGroup::where('lead_user_id', $group->lead_user_id)
-                ->where('room_id', $group->room_id)
-                ->where('date', $group->date)
+            // ยกเลิกทุก slot ในรอบการจองเดียวกัน (session_id)
+            $siblings = $group->sessionSiblings()
                 ->whereIn('status', ['pending', 'waiting_confirm'])
                 ->get();
 
@@ -227,12 +225,14 @@ class BookingController extends Controller
 
                 $groups    = [];
                 $shareToken = Str::random(32);
+                $sessionId  = (string) Str::uuid();
 
                 foreach ($timeIds as $timeId) {
                     $group = BookingGroup::create([
                         'room_id'          => $data['room_id'],
                         'date'             => $date,
                         'time_id'          => $timeId,
+                        'session_id'       => $sessionId,
                         'lead_user_id'     => $member->id,
                         'status'           => $groupStatus,
                         'source'           => 'web',
@@ -317,14 +317,11 @@ class BookingController extends Controller
         // นับสมาชิกที่ join แล้ว (รวมทุก slot ในเซสชัน)
         $memberCount = Booking::where('group_id', $group->id)->count();
 
-        // เช็คว่า member นี้ join แล้วหรือยัง
-        $alreadyJoined = Booking::whereIn(
-            'group_id',
-            BookingGroup::where('lead_user_id', $group->lead_user_id)
-                ->where('room_id', $group->room_id)
-                ->where('date', $group->date)
-                ->pluck('id')
-        )->where('user_id', $member->id)->exists();
+        // เช็คว่า member นี้ join รอบนี้แล้วหรือยัง (เฉพาะรอบของลิงก์นี้ ไม่ปนรอบอื่นของ leader ในห้องเดิมวันเดิม)
+        $alreadyJoined = Booking::whereIn('group_id', $group->sessionSiblings()->pluck('id'))
+            ->where('user_id', $member->id)
+            ->where('status', '!=', 'cancelled')
+            ->exists();
 
         return inertia('Join', [
             'group' => [
@@ -373,10 +370,8 @@ class BookingController extends Controller
             DB::transaction(function () use ($group, $member, $joinZone, $zoneQuota) {
                 $minCapacity = $joinZone->min_capacity ?? 1;
 
-                // หา sibling groups (slot อื่นในเซสชันเดียวกัน)
-                $siblings = BookingGroup::where('lead_user_id', $group->lead_user_id)
-                    ->where('room_id', $group->room_id)
-                    ->where('date', $group->date)
+                // หา sibling groups (slot อื่นในรอบการจองเดียวกัน)
+                $siblings = $group->sessionSiblings()
                     ->where('status', 'pending')
                     ->lockForUpdate()
                     ->get();

@@ -3,12 +3,15 @@ import { ref, onMounted, computed } from "vue";
 import axios from "axios";
 import Swal from "sweetalert2";
 import BookingBoard from "./BookingBoard.vue";
+import { canEndEarly, canCancelWhole, promptEndEarly } from "./endEarly";
 
 interface BookingRow {
     ids: number[];
     date: string;
     time_label: string;
     hours: number;
+    start_hour: number;
+    end_hour: number;
     status: string;
     source?: string;
     confirm_type: "auto" | "manual";
@@ -21,6 +24,7 @@ interface BookingRow {
     member_email: string;
     cancelled_by?: string | null;
     cancel_reason?: string | null;
+    cancelled_at?: string | null;
 }
 
 interface Paginated {
@@ -57,7 +61,11 @@ const activeTab = ref<TabKey>("pending");
 
 const viewMode = ref<"list" | "board">("list");
 
-const todayStr = () => new Date().toISOString().split("T")[0];
+// วันที่ตามเวลาเครื่อง (ไทย) — toISOString() เป็น UTC ทำให้ก่อน 07:00 ได้วันที่ของเมื่อวาน
+const todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 const search = ref("");
 const filterDate = ref(todayStr());
@@ -101,10 +109,10 @@ const canAct = (row: BookingRow) =>
     row.confirm_type === "manual" &&
     (row.status === "pending" || row.status === "waiting_confirm");
 
-// เช็คอินโดยเจ้าหน้าที่ — เฉพาะห้องที่ไม่ติด kiosk, ยืนยันแล้ว, ยังไม่เช็คอิน, วันนี้
+// เช็คอินโดยเจ้าหน้าที่ — ยืนยันแล้ว, ยังไม่เช็คอิน, วันนี้
+// รวมห้องมี kiosk ด้วย (นิสิตมาเคาน์เตอร์แทนการสแกน — ตามข้อความในการ์ดจองหน้าแรก)
 const canCheckin = (row: BookingRow) =>
     row.status === "confirmed" &&
-    row.access_control === "0" &&
     !row.checked_in &&
     row.date === todayStr();
 
@@ -235,6 +243,18 @@ async function cancel(row: BookingRow) {
     fetch(paginated.value.current_page);
 }
 
+async function endEarly(row: BookingRow) {
+    const reason = await promptEndEarly(row, row.room_title, row.member_name);
+    if (reason === null) return;
+    try {
+        const { data } = await axios.post("/admin/bookings/end-early", { ids: row.ids, reason: reason || undefined });
+        Swal.fire({ title: "เลิกใช้ก่อนเวลาแล้ว", text: data.message, icon: "success", timer: 1600, showConfirmButton: false });
+    } catch (e: any) {
+        Swal.fire("ไม่สำเร็จ", e.response?.data?.message ?? "เกิดข้อผิดพลาด", "error");
+    }
+    fetch(paginated.value.current_page);
+}
+
 async function reject(row: BookingRow) {
     const hours = row.hours > 1 ? ` (${row.hours} ชม.)` : "";
     const result = await Swal.fire({
@@ -328,7 +348,7 @@ onMounted(() => fetch());
                     v-if="viewMode === 'list' && paginated.pending_count > 0"
                     class="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-xl font-bold"
                 >
-                    {{ paginated.pending_count }} รายการรอดำเนินการ
+                    {{ paginated.pending_count }} รายการรอเจ้าหน้าที่
                 </span>
                 <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
                     <button
@@ -406,7 +426,12 @@ onMounted(() => fetch());
                             >รายการที่เจ้าหน้าที่จองล่วงหน้าไว้
                             และยังไม่ถึงวันใช้งาน</template
                         >
-                        <template v-else>รายการที่ยกเลิก / ถูกปฏิเสธ</template>
+                        <template v-else
+                            >รายการที่ยกเลิก / ถูกปฏิเสธ — กรองตาม<b>วันที่กดยกเลิก</b>
+                            {{
+                                filterDate ? fmtDate(filterDate) : "(ทั้งหมด)"
+                            }}</template
+                        >
                     </p>
                 </div>
             </div>
@@ -460,7 +485,9 @@ onMounted(() => fetch());
                                     </div>
                                 </td>
                                 <td class="p-4">
-                                    <div>{{ fmtDate(row.date) }}</div>
+                                    <div>
+                                        <span v-if="activeTab === 'cancelled'" class="text-[10px] text-slate-400">จองวันที่ </span>{{ fmtDate(row.date) }}
+                                    </div>
                                     <div
                                         class="font-bold text-slate-900 mt-0.5"
                                     >
@@ -487,9 +514,10 @@ onMounted(() => fetch());
                                         }}
                                     </span>
                                     <div
-                                        v-if="row.status === 'cancelled' && (row.cancelled_by || row.cancel_reason)"
+                                        v-if="row.status === 'cancelled' && (row.cancelled_by || row.cancel_reason || row.cancelled_at)"
                                         class="text-[10px] text-slate-400 mt-1.5 text-left max-w-[180px] mx-auto"
                                     >
+                                        <div v-if="row.cancelled_at"><i class="mr-1 fa-solid fa-calendar-xmark"></i>ยกเลิกเมื่อ {{ fmtDate(row.cancelled_at.slice(0, 10)) }} {{ row.cancelled_at.slice(11) }} น.</div>
                                         <div v-if="row.cancelled_by"><i class="mr-1 fa-solid fa-user-shield"></i>{{ row.cancelled_by }}</div>
                                         <div v-if="row.cancel_reason" class="italic">"{{ row.cancel_reason }}"</div>
                                     </div>
@@ -533,6 +561,16 @@ onMounted(() => fetch());
                                             เช็คอินแล้ว
                                         </span>
                                         <button
+                                            v-if="canEndEarly(row)"
+                                            @click="endEarly(row)"
+                                            class="bg-white hover:bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-blue-200 transition-all inline-flex items-center gap-1"
+                                            title="คืนชั่วโมงที่ยังไม่เริ่ม — ชั่วโมงที่ใช้แล้วเก็บไว้"
+                                        >
+                                            <i class="fa-solid fa-hourglass-end"></i>
+                                            เลิกใช้ก่อนเวลา
+                                        </button>
+                                        <button
+                                            v-if="canCancelWhole(row)"
                                             @click="cancel(row)"
                                             class="bg-white hover:bg-red-50 text-red-500 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-red-200 transition-all"
                                         >

@@ -205,11 +205,14 @@ class ScanBookController extends Controller
 
                 Quota::assertCanBook($member->id, $date, $zone->id, $zone->zone_daily_quota ?? 3, count($timeIds));
 
+                $sessionId = (string) Str::uuid();
+
                 foreach ($timeIds as $t) {
                     $g = BookingGroup::create([
                         'room_id'          => $room->id,
                         'date'             => $date,
                         'time_id'          => $t,
+                        'session_id'       => $sessionId,
                         'lead_user_id'     => $member->id,
                         'status'           => 'confirmed',
                         'source'           => 'qr',

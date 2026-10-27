@@ -87,11 +87,13 @@ Route::middleware('auth:admin')->group(function () {
     Route::get('/admin/bookings',              [AdminBookingController::class, 'index']);
     Route::get('/admin/bookings/room-day',     [AdminBookingController::class, 'roomDay']);
     Route::get('/admin/bookings/board-summary', [AdminBookingController::class, 'boardSummary']);
+    Route::get('/admin/bookings/pending-count', [AdminBookingController::class, 'pendingCount']);
     Route::post('/admin/bookings/staff',   [AdminBookingController::class, 'staffStore']);
     Route::post('/admin/bookings/approve', [AdminBookingController::class, 'approveSession']);
     Route::post('/admin/bookings/reject',  [AdminBookingController::class, 'rejectSession']);
     Route::post('/admin/bookings/checkin', [AdminBookingController::class, 'checkinSession']);
     Route::post('/admin/bookings/cancel',  [AdminBookingController::class, 'cancelSession']);
+    Route::post('/admin/bookings/end-early', [AdminBookingController::class, 'endEarly']);
 
     Route::get('/admin/stats/usage', [AdminStatsController::class, 'usage']);
 

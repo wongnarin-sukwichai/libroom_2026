@@ -70,6 +70,8 @@ times
 
 booking_groups
   ├── room_id, date, time_id (= hour number เช่น 9,10,11...)
+  ├── session_id  UUID ร่วมกันทุก slot ในการจองครั้งเดียวกัน — หา slot ในรอบเดียวกันผ่าน `BookingGroup::sessionSiblings()` เสมอ
+  │               (ห้ามเดาจาก lead+room+date — จองห้องเดิมวันเดิม 2 รอบจะปนกัน; แถวก่อน 2026-10-26 เป็น null → fallback แบบเดิม)
   ├── lead_user_id → members.id
   ├── join_token, token_expires_at  (สำหรับแชร์ลิงก์ invite สมาชิก)
   └── status: pending | waiting_confirm | confirmed | completed | cancelled
@@ -123,7 +125,9 @@ settings   (key–value config ทั้งระบบ)
   - **ไม่มี kiosk** (เช่น study room): → **waiting_confirm** (รอเจ้าหน้าที่ — นิสิตต้องมาติดต่อเคาน์เตอร์เอง) → เจ้าหน้าที่เช็คว่ามาจริงแล้วกด "อนุมัติ" **1 ปุ่มเดียว = confirmed + checked_in พร้อมกัน** (`AdminBookingController@approveSession` เช็ค `room.access_control==='0'` แล้ว set checked_in ให้เลย ไม่ต้องกดเช็คอินแยกอีกปุ่ม) — ไม่อนุมัติภายใน 15 นาทีหลังเริ่ม slot → cron ยกเลิก (`cancelUnconfirmedManual`)
   - **มี kiosk** (เช่น ห้องเรียนรู้ A): → **ข้าม waiting_confirm ไป confirmed ทันที** (kiosk ทำหน้าที่ verify ตัวตนแทนเจ้าหน้าที่ ไม่ต้องรอ staff) → ต้องสแกน kiosk ภายใน 15 นาทีหลังเริ่ม slot ไม่งั้น cron ยกเลิก (`cancelUnscannedKiosk`)
 - **Join flow**: leader แชร์ join_token (หมดอายุ 15 นาที) ให้ member อื่นมาเข้าร่วม session
-- **Check-in**: `bookings.status confirmed → checked_in` เกิดที่ (1) kiosk/scan-to-book สแกน (ห้อง `access_control='1'` หรือมี `scan_code`) (2) ปุ่ม "เช็คอิน" แยกในแท็บ admin (ห้อง `access_control='0'` ที่เป็น auto — ห้อง manual ไม่มี kiosk ถูก merge เข้ากับ "อนุมัติ" ไปแล้ว ไม่มีปุ่มเช็คอินแยกให้เห็น)
+- **Check-in**: `bookings.status confirmed → checked_in` เกิดที่ (1) kiosk/scan-to-book สแกน (ห้อง `access_control='1'` หรือมี `scan_code`) — เช็คอินเฉพาะ slot ที่เหลือใน**รอบการจองเดียวกัน** (2) ปุ่ม "เช็คอิน" ในแท็บ admin — ทุกห้องที่ `confirmed` วันนี้ รวมห้องมี kiosk (นิสิตมาเคาน์เตอร์แทนการสแกนได้ ตามข้อความในการ์ดจองหน้าแรก); ห้อง manual ไม่มี kiosk ไม่เห็นปุ่มนี้เพราะ "อนุมัติ" = เช็คอินไปแล้ว
+- **Admin badge "จัดการคำขอจอง"**: นับจำนวน**รอบ** `waiting_confirm` เท่านั้น (งานที่ staff ต้องทำ) — `GET /admin/bookings/pending-count`, Dashboard poll ทุก 30 วิ + animation
+- **แท็บ "ยกเลิก / ปฏิเสธ"**: filter วันที่ = **วันที่กดยกเลิก** (`cancelled_at`) ไม่ใช่วันที่จอง, เรียงล่าสุดก่อน
 - **Kiosk** (`KioskController@getAccess`): member แสดง code + slot ปัจจุบันตรง →
   - ห้อง `access_control='1'`: รับทั้ง `waiting_confirm`/`confirmed` → promote `waiting_confirm→confirmed` + set `checked_in` ทุก slot ที่เหลือใน session (idempotent). `pending` (member ไม่ครบ) = ไม่ผ่าน
   - ห้อง `access_control='0'`: ต้อง `confirmed` มาก่อน (เจ้าหน้าที่ approve/checkin)
@@ -163,13 +167,15 @@ settings   (key–value config ทั้งระบบ)
 |--------|-----|----------|
 | GET | `/dashboard` | Admin dashboard (SPA) |
 | GET | `/admin/overview-stats` | สถิติภาพรวม |
+| GET | `/admin/overview-service` (+ `/api/overview-service`) | การ์ด "สถิติการเข้าใช้บริการรายพื้นที่" — จาก `UsageStats` ของระบบนี้ (เลิก proxy ระบบเก่าแล้ว 2026-10-27; คงคีย์ `arec/dlp/space` ไว้ให้ผู้เรียกภายนอกเดิม) |
 | GET | `/admin/bookings` | รายการ booking ทั้งหมด |
 | GET | `/admin/bookings/room-day?room_id=&date=` | ผังห้อง: ช่องเวลา + รายชื่อผู้จองต่อช่อง (session ข้ามชั่วโมงโชว์ทุกช่อง + `is_continuation`) |
 | GET | `/admin/bookings/board-summary?date=` | ผังห้อง: จำนวน pending/booked ต่อห้อง (จุดสีบนปุ่มห้อง) |
 | POST | `/admin/bookings/approve` | Approve session (→ confirmed, ไม่เช็คอิน) |
 | POST | `/admin/bookings/reject` | Reject session (pending/waiting → cancelled) |
 | POST | `/admin/bookings/checkin` | เจ้าหน้าที่กดเช็คอิน (ห้อง access_control=0) |
-| POST | `/admin/bookings/cancel` | ยกเลิก session ที่ยืนยันแล้ว (confirmed → cancelled) |
+| POST | `/admin/bookings/cancel` | ยกเลิก session ที่ยืนยันแล้ว (confirmed → cancelled) — UI แสดงเฉพาะรอบที่**ยังไม่เริ่ม** |
+| POST | `/admin/bookings/end-early` | **เลิกใช้ก่อนเวลา** (admin+staff): รอบที่เริ่มแล้ววันนี้ → ยกเลิกเฉพาะชั่วโมงที่ยังไม่เริ่ม (`time_id > ชั่วโมงปัจจุบัน`), ชั่วโมงที่ใช้แล้ว/ปัจจุบันเก็บไว้ (ประวัติเช็คอิน+สถิติ+โควตาที่ใช้จริง); `cancel_reason` = "เลิกใช้ก่อนเวลา — …" — UI logic อยู่ที่ `Components/Admin/endEarly.ts` |
 | POST | `/admin/bookings/staff` | Staff สร้าง booking แทน |
 | POST | `/admin/rooms/{room}/toggle-access` | เปิด/ปิด access control ของห้อง |
 | PUT | `/admin/zones/{zone}/tools` | ตั้งชุดอุปกรณ์มาตรฐานของ zone |

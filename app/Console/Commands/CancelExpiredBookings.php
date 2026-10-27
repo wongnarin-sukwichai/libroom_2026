@@ -36,9 +36,7 @@ class CancelExpiredBookings extends Command
 
         DB::transaction(function () use ($expired) {
             foreach ($expired as $group) {
-                $siblings = BookingGroup::where('lead_user_id', $group->lead_user_id)
-                    ->where('room_id', $group->room_id)
-                    ->where('date', $group->date)
+                $siblings = $group->sessionSiblings()
                     ->where('status', 'pending')
                     ->get();
 
@@ -73,10 +71,8 @@ class CancelExpiredBookings extends Command
             return;
         }
 
-        // จัดกลุ่มเป็น session (lead + room + date) เพื่อส่งอีเมลแค่ครั้งเดียวต่อ session
-        $sessions = $overdue->groupBy(
-            fn($g) => $g->lead_user_id . '|' . $g->room_id . '|' . $g->date->toDateString()
-        );
+        // จัดกลุ่มเป็นรอบการจอง (session_id) เพื่อส่งอีเมลแค่ครั้งเดียวต่อรอบ
+        $sessions = $overdue->groupBy(fn($g) => $g->sessionKey());
 
         $cancelledCount = 0;
 
@@ -85,10 +81,8 @@ class CancelExpiredBookings extends Command
                 $first = $sessionGroups->first();
 
                 // ยกเลิกทุก slot ใน session เดียวกัน
-                $siblings = BookingGroup::where('status', 'waiting_confirm')
-                    ->where('lead_user_id', $first->lead_user_id)
-                    ->where('room_id', $first->room_id)
-                    ->where('date', $first->date)
+                $siblings = $first->sessionSiblings()
+                    ->where('status', 'waiting_confirm')
                     ->get();
 
                 foreach ($siblings as $g) {
@@ -129,10 +123,8 @@ class CancelExpiredBookings extends Command
             return;
         }
 
-        // จัดกลุ่มเป็น session (lead + room + date) — ยกเลิกทั้ง session เดียวกันพร้อมกัน
-        $sessions = $overdue->groupBy(
-            fn($g) => $g->lead_user_id . '|' . $g->room_id . '|' . $g->date->toDateString()
-        );
+        // จัดกลุ่มเป็นรอบการจอง (session_id) — ยกเลิกทั้งรอบพร้อมกัน
+        $sessions = $overdue->groupBy(fn($g) => $g->sessionKey());
 
         $cancelledCount = 0;
 
@@ -140,10 +132,8 @@ class CancelExpiredBookings extends Command
             foreach ($sessions as $sessionGroups) {
                 $first = $sessionGroups->first();
 
-                $siblings = BookingGroup::where('status', 'confirmed')
-                    ->where('lead_user_id', $first->lead_user_id)
-                    ->where('room_id', $first->room_id)
-                    ->where('date', $first->date)
+                $siblings = $first->sessionSiblings()
+                    ->where('status', 'confirmed')
                     ->whereDoesntHave('bookings', fn($q) => $q->where('status', 'checked_in'))
                     ->get();
 

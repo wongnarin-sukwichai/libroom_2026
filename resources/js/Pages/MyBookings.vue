@@ -9,7 +9,7 @@ const appBase  = window.APP_BASE ?? '';
 const page     = usePage();
 const authUser = computed(() => page.props.auth?.user ?? null);
 
-const today = new Date().toISOString().split('T')[0];
+const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })(); // เวลาเครื่อง ไม่ใช่ UTC
 
 const upcoming = computed(() => props.bookings.filter(b => b.date >= today && b.status !== 'cancelled'));
 

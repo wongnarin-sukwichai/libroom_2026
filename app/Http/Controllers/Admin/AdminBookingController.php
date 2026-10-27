@@ -32,6 +32,9 @@ class AdminBookingController extends Controller
 
         // จองล่วงหน้า = เจ้าหน้าที่จองไว้ (admin_id != null) และวันที่ยังมาไม่ถึง (date > วันนี้)
         $isUpcoming    = $tab === 'upcoming';
+        // แท็บยกเลิก: วันที่ = "วันที่กดยกเลิก" (ไม่ใช่วันที่ของการจอง) — ยกเลิกการจองล่วงหน้าวันนี้ก็เห็นวันนี้
+        $isCancelled   = $tab === 'cancelled';
+        $cancelledAt   = 'COALESCE(cancelled_at, updated_at)';
         $upcomingAfter = $isUpcoming ? Carbon::now('Asia/Bangkok')->toDateString() : null;
 
         $search = trim((string) $request->get('search', ''));
@@ -44,7 +47,8 @@ class AdminBookingController extends Controller
             'admin'              => fn($q) => $q->select('id', 'name', 'email'),
             'bookings'           => fn($q) => $q->select('id', 'group_id', 'status'),
         ])
-        ->when($date, fn($q) => $q->where('date', $date))
+        ->when($date && ! $isCancelled, fn($q) => $q->where('date', $date))
+        ->when($date && $isCancelled, fn($q) => $q->whereRaw("DATE({$cancelledAt}) = ?", [$date]))
         ->when($isUpcoming, fn($q) => $q
             ->whereNotNull('admin_id')
             ->where('date', '>', $upcomingAfter))
@@ -58,6 +62,8 @@ class AdminBookingController extends Controller
             });
         })
         ->orderByRaw("FIELD(status, 'pending', 'waiting_confirm', 'confirmed', 'cancelled')")
+        // ยกเลิกล่าสุดขึ้นก่อน (slot ในรอบเดียวกันถูกยกเลิกพร้อมกัน → เวลาเท่ากัน จึงยังติดกันให้ groupIntoSessions รวมได้)
+        ->when($isCancelled, fn($q) => $q->orderByRaw("{$cancelledAt} DESC"))
         ->orderBy('date')
         ->orderBy('lead_user_id')
         ->orderBy('room_id')
@@ -72,10 +78,7 @@ class AdminBookingController extends Controller
         $total    = count($sessions);
         $items    = array_slice($sessions, ($page - 1) * $perPage, $perPage);
 
-        // badge คิวงาน = pending + waiting_confirm ของห้อง manual (ทุกวัน)
-        $pendingCount = BookingGroup::whereIn('status', ['pending', 'waiting_confirm'])
-            ->whereHas('room', fn($q) => $q->where('confirm_type', 'manual'))
-            ->count();
+        $pendingCount = $this->staffActionCount();
 
         return response()->json([
             'data'          => array_values($items),
@@ -86,6 +89,24 @@ class AdminBookingController extends Controller
             'to'            => min($page * $perPage, $total),
             'pending_count' => $pendingCount,
         ]);
+    }
+
+    // GET /admin/bookings/pending-count — badge เมนู (Dashboard poll ทุก 30 วิ)
+    public function pendingCount()
+    {
+        return response()->json(['count' => $this->staffActionCount()]);
+    }
+
+    /**
+     * badge คิวงาน = จำนวน "รอบการจอง" ที่รอเจ้าหน้าที่ (waiting_confirm) — งานที่ staff ต้องลงมือจริง
+     * ไม่นับ pending (รอสมาชิกครบ) เพราะเจ้าหน้าที่ทำอะไรไม่ได้ / นับเป็นรอบ ไม่ใช่รายชั่วโมง
+     */
+    private function staffActionCount(): int
+    {
+        return BookingGroup::where('status', 'waiting_confirm')
+            ->get(['id', 'session_id', 'lead_user_id', 'room_id', 'date'])
+            ->unique(fn($g) => $g->sessionKey())
+            ->count();
     }
 
     private function groupIntoSessions($groups): array
@@ -99,6 +120,7 @@ class AdminBookingController extends Controller
                 && $current['room_id']      === $g->room_id
                 && $current['status']       === $g->status
                 && $current['date']         === $g->date->format('Y-m-d')
+                && $current['session_id']   === $g->session_id
                 && $g->time_id === $current['last_time'] + 1;
 
             if ($sameSession) {
@@ -110,6 +132,7 @@ class AdminBookingController extends Controller
             } else {
                 if ($current) $sessions[] = $this->formatSession($current);
                 $current = [
+                    'session_id'   => $g->session_id,
                     'lead_user_id' => $g->lead_user_id,
                     'room_id'      => $g->room_id,
                     'status'       => $g->status,
@@ -130,6 +153,7 @@ class AdminBookingController extends Controller
                     'member_email' => $g->lead?->email ?? $g->admin?->email,
                     'cancelled_by'  => $g->cancelled_by,
                     'cancel_reason' => $g->cancel_reason,
+                    'cancelled_at'  => ($g->cancelled_at ?? $g->updated_at)?->format('Y-m-d H:i'),
                 ];
             }
         }
@@ -153,6 +177,8 @@ class AdminBookingController extends Controller
             'ids'            => $s['ids'],
             'date'           => $s['date'],
             'time_label'     => $pad($s['start_hour']) . ' – ' . $pad($s['end_hour']) . ' น.',
+            'start_hour'     => $s['start_hour'],
+            'end_hour'       => $s['end_hour'],
             'hours'          => $s['hours'],
             'status'         => $s['status'],
             'source'         => $s['source'] ?? 'web',
@@ -166,6 +192,7 @@ class AdminBookingController extends Controller
             'member_email'   => $s['member_email'],
             'cancelled_by'   => $s['cancelled_by']  ?? null,
             'cancel_reason'  => $s['cancel_reason'] ?? null,
+            'cancelled_at'   => $s['status'] === 'cancelled' ? ($s['cancelled_at'] ?? null) : null,
         ];
     }
 
@@ -214,7 +241,7 @@ class AdminBookingController extends Controller
         // จับ session: lead/admin + status เดียวกัน + time_id ต่อเนื่อง
         $sessions = [];
         $cur      = null;
-        $keyOf    = fn($g) => ($g->lead_user_id ?? 'a' . $g->admin_id) . '|' . $g->status;
+        $keyOf    = fn($g) => ($g->lead_user_id ?? 'a' . $g->admin_id) . '|' . $g->status . '|' . $g->session_id;
 
         foreach ($groups as $g) {
             if ($cur && $cur['key'] === $keyOf($g) && $g->time_id === $cur['last'] + 1) {
@@ -337,6 +364,61 @@ class AdminBookingController extends Controller
         return response()->json(['message' => 'ยกเลิกเรียบร้อย', 'count' => $groups->count()]);
     }
 
+    /**
+     * เลิกใช้ก่อนเวลา (admin/staff เท่านั้น) — รอบที่ "เริ่มใช้แล้ว" วันนี้:
+     * ชั่วโมงที่ผ่านมา + ชั่วโมงปัจจุบัน = เก็บไว้ (ประวัติเช็คอิน/สถิติ/โควตาที่ใช้จริง ไม่แตะ)
+     * ชั่วโมงที่ยังไม่เริ่ม = ยกเลิก → ห้องว่างให้คนอื่นจอง + โควตาคืนเอง (Quota นับสดจากแถวที่ยังไม่ยกเลิก)
+     */
+    public function endEarly(Request $request)
+    {
+        $data = $request->validate([
+            'ids'    => 'required|array|min:1',
+            'ids.*'  => 'integer',
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $now   = Carbon::now('Asia/Bangkok');
+        $first = BookingGroup::whereIn('id', $data['ids'])->where('status', 'confirmed')->orderBy('time_id')->first();
+
+        if (! $first || $first->date->toDateString() !== $now->toDateString()) {
+            return response()->json(['message' => 'ใช้ได้เฉพาะรอบที่ยืนยันแล้วของวันนี้'], 422);
+        }
+
+        $session = $first->sessionSiblings()->where('status', 'confirmed')->orderBy('time_id')->get();
+
+        if ($session->min('time_id') > $now->hour) {
+            return response()->json(['message' => 'รอบนี้ยังไม่เริ่มใช้ — ใช้ปุ่ม "ยกเลิก" แทน'], 422);
+        }
+
+        $release = $session->filter(fn($g) => $g->time_id > $now->hour)->values();
+        if ($release->isEmpty()) {
+            return response()->json(['message' => 'อยู่ในชั่วโมงสุดท้ายแล้ว ไม่มีชั่วโมงเหลือให้คืน'], 422);
+        }
+
+        $admin  = Auth::guard('admin')->user();
+        $reason = 'เลิกใช้ก่อนเวลา' . (! empty($data['reason']) ? ' — ' . $data['reason'] : '');
+
+        DB::transaction(function () use ($release, $admin, $reason) {
+            foreach ($release as $g) {
+                $g->update([
+                    'status'        => 'cancelled',
+                    'cancelled_at'  => Carbon::now(),
+                    'cancelled_by'  => $admin ? "เจ้าหน้าที่ ({$admin->name})" : 'เจ้าหน้าที่',
+                    'cancel_reason' => $reason,
+                ]);
+                $g->bookings()->update(['status' => 'cancelled']);
+            }
+        });
+
+        $from = $release->min('time_id');
+        $to   = $release->max('time_id') + 1;
+
+        return response()->json([
+            'message'  => sprintf('คืนห้อง %02d:00 – %02d:00 น. แล้ว', $from, $to),
+            'released' => $release->count(),
+        ]);
+    }
+
     public function staffStore(Request $request)
     {
         $data = $request->validate([
@@ -373,14 +455,16 @@ class AdminBookingController extends Controller
                     if ($taken) throw new \Exception('slot_taken');
                 }
 
-                $adminId = Auth::guard('admin')->id();
-                $groups  = [];
+                $adminId   = Auth::guard('admin')->id();
+                $groups    = [];
+                $sessionId = (string) Str::uuid();
 
                 foreach ($timeIds as $timeId) {
                     $group = BookingGroup::create([
                         'room_id'          => $data['room_id'],
                         'date'             => $data['date'],
                         'time_id'          => $timeId,
+                        'session_id'       => $sessionId,
                         'lead_user_id'     => null,
                         'admin_id'         => $adminId,
                         'status'           => 'confirmed',

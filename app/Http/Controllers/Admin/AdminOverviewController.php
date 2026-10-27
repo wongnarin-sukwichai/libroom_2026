@@ -8,7 +8,7 @@ use App\Models\Member;
 use App\Models\Room;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
+use App\Support\UsageStats;
 
 class AdminOverviewController extends Controller
 {
@@ -25,15 +25,35 @@ class AdminOverviewController extends Controller
         ]);
     }
 
-    // proxy เรียก external API สถิติการเข้าใช้บริการ Location เดือนนี้
+    /**
+     * สถิติการเข้าใช้บริการรายอาคาร (location) เดือนนี้ — จากระบบปัจจุบัน (UsageStats ตัวเดียวกับแท็บ "สถิติการเข้าใช้งาน")
+     * เดิม proxy ไประบบเก่า libroom.msu.ac.th/api/getService (เลิกใช้ 2026-10-27)
+     * ใช้ทั้ง /admin/overview-service (การ์ดหน้าภาพรวม) และ /api/overview-service (ระบบภายนอก)
+     * คีย์ arec/dlp/space = รูปแบบเดิมของระบบเก่า คงไว้ให้ผู้เรียกภายนอกที่อาจยังใช้อยู่ไม่พัง (location id 1/2/3)
+     */
     public function serviceStats()
     {
-        try {
-            $data = $this->apiHttp()->get('https://libroom.msu.ac.th/api/getService')->json();
-            return response()->json($data ?? []);
-        } catch (\Exception) {
-            return response()->json([]);
+        $now   = Carbon::now('Asia/Bangkok');
+        $stats = UsageStats::monthly($now, $now);
+
+        $locations = $stats['locations']->map(fn($loc) => [
+            'id'    => $loc['id'],
+            'title' => $loc['title'],
+            'total' => $loc['total'],
+        ])->values();
+
+        $legacy = [];
+        foreach ([1 => 'arec', 2 => 'dlp', 3 => 'space'] as $id => $key) {
+            $legacy[$key] = $locations->firstWhere('id', $id)['total'] ?? 0;
         }
+
+        return response()->json($legacy + [
+            'month'     => $stats['from'],
+            'label'     => UsageStats::monthLabel($now),
+            'unit'      => $stats['unit'],
+            'total'     => $stats['total'],
+            'locations' => $locations,
+        ]);
     }
 
     // top 5 zone ที่มีการจองมากที่สุดในเดือนปัจจุบัน (จาก DB เราเอง)
@@ -52,10 +72,5 @@ class AdminOverviewController extends Controller
             ->get();
 
         return response()->json($rows);
-    }
-
-    private function apiHttp(): \Illuminate\Http\Client\PendingRequest
-    {
-        return Http::timeout(5)->withToken(config('services.libroom.api_token'));
     }
 }

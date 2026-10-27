@@ -152,11 +152,10 @@ const translations = {
         footerQuickLink: "ลิงก์ที่เป็นประโยชน์",
         footerSocial: "โซเชียลมีเดีย / การติดต่อ",
         footerDeveloped: "ระบบการจองพื้นที่และบริการออนไลน์เวอร์ชัน 2",
-        cookieTitle: "การยินยอมเพื่อใช้คุกกี้ (Cookie Consent)",
+        cookieTitle: "การใช้คุกกี้ (Cookie Notice)",
         cookieDesc:
-            "เว็บไซต์นี้ใช้คุกกี้เพื่อวัตถุประสงค์ในการจองพื้นที่ จัดเก็บข้อมูลผู้ใช้และอำนวยความสะดวกในการบริการ ท่านยินยอมให้เราเก็บประวัติการจองและบันทึกล็อกอินในระบบเพื่อประสิทธิภาพสูงสุดตามนโยบายคุ้มครองข้อมูลส่วนบุคคล (PDPA)",
-        cookieAccept: "ยอมรับทั้งหมด",
-        cookieDecline: "ปฏิเสธ",
+            "เว็บไซต์นี้ใช้คุกกี้ที่จำเป็นต่อการเข้าสู่ระบบและการจองเท่านั้น ไม่มีคุกกี้ติดตามหรือโฆษณา",
+        cookieAccept: "รับทราบ",
         rulesHeader: "ระเบียบและข้อปฏิบัติในการเข้าใช้บริการพื้นที่",
         rulesNotice:
             "กรุณาปฏิบัติตามกฎกติกาอย่างเคร่งครัดเพื่อความเป็นระเบียบและบรรยากาศที่ดีสำหรับทุกคน",
@@ -224,11 +223,10 @@ const translations = {
         footerQuickLink: "Useful Links",
         footerSocial: "Social Medias / Contact Us",
         footerDeveloped: "Study Space Online Booking Ver 2.5",
-        cookieTitle: "Cookie Consent Information",
+        cookieTitle: "Cookie Notice",
         cookieDesc:
-            "We use cookies to enhance booking flow, track state session and deliver superior user experience in compliance with Personal Data Protection Act (PDPA) policies.",
-        cookieAccept: "Accept All",
-        cookieDecline: "Decline",
+            "This website uses only the cookies required for signing in and booking. No tracking or advertising cookies.",
+        cookieAccept: "Got it",
         rulesHeader: "Rules and Conditions of Use",
         rulesNotice:
             "Please behave ethically and strictly follow regulations to maintain a positive study environment.",
@@ -317,6 +315,13 @@ const openModal = (name) => {
 const closeModal = (name) => {
     modals.value[name] = false;
 };
+
+// Esc = ปิด modal คู่มือ (รูปเต็มจอ ปิดด้วยคีย์บอร์ดได้)
+const onManualEsc = (e) => {
+    if (e.key === "Escape" && modals.value.manual) closeModal("manual");
+};
+onMounted(() => window.addEventListener("keydown", onManualEsc));
+onUnmounted(() => window.removeEventListener("keydown", onManualEsc));
 
 // --- 4. การจัดการสถานะ Auth ---
 const page = usePage();
@@ -595,30 +600,28 @@ const handleEvaluationSubmit = () => {
     };
 };
 
-// --- 7. การยินยอม Cookie (PDPA) ---
-const showCookieConsent = ref(true);
-
-onMounted(() => {
-    const consent = sessionStorage.getItem("cookieConsent");
-    if (consent) {
-        showCookieConsent.value = false;
+// --- 7. แจ้งการใช้คุกกี้ (PDPA) ---
+// ระบบใช้เฉพาะคุกกี้ที่จำเป็น (laravel_session, XSRF-TOKEN) → แค่ "แจ้งให้ทราบ" ปุ่มเดียว ไม่มีปฏิเสธ (ปิดไม่ได้จริง ไม่งั้น login ไม่ได้)
+// ถ้าวันหนึ่งเพิ่ม analytics/คุกกี้การตลาด → ต้องเปลี่ยนเป็นขอความยินยอมจริงที่บล็อกคุกกี้นั้นจนกว่าจะกดยอมรับ
+// localStorage = รับทราบครั้งเดียวต่อเบราว์เซอร์ / key มี prefix กันชนเว็บอื่นบนโดเมนเดียวกัน
+// อ่านตั้งแต่ setup ไม่ให้แถบกะพริบ / try-catch กันโหมดส่วนตัวที่ storage ใช้ไม่ได้
+const COOKIE_NOTICE_KEY = "libroom_cookieConsent";
+const readCookieConsent = () => {
+    try {
+        return localStorage.getItem(COOKIE_NOTICE_KEY);
+    } catch {
+        return null;
     }
-});
+};
+const showCookieConsent = ref(!readCookieConsent());
 
-const handleCookieConsent = (decision) => {
-    sessionStorage.setItem("cookieConsent", decision);
+const acknowledgeCookies = () => {
+    try {
+        localStorage.setItem(COOKIE_NOTICE_KEY, "acknowledged");
+    } catch {
+        // storage ใช้ไม่ได้ — ซ่อนแค่ในหน้านี้
+    }
     showCookieConsent.value = false;
-
-    if (decision === "accepted") {
-        showToast(
-            currentLang.value === "th"
-                ? "ยินยอมนโยบายคุกกี้"
-                : "Cookie Policy Accepted",
-            currentLang.value === "th"
-                ? "ขอบคุณที่ให้การยินยอมในการใช้บริการแพลตฟอร์ม"
-                : "Thank you for accepting our cookie statement.",
-        );
-    }
 };
 
 // --- 8. ระบบ Toast Notification ---
@@ -675,15 +678,17 @@ const hideToast = () => {
                         class="flex items-center gap-1.5 px-3 py-2 border-b-4 border-transparent rounded-t-lg transition-all hover:font-bold hover:text-slate-900 hover:border-amber-400">
                         <span>{{ t("navRules") }}</span>
                     </button>
-                    <a :href="`${appBase}/pdf/tools.pdf`" target="_blank" rel="noopener noreferrer"
+                    <button @click="openModal('manual')"
                         class="flex items-center gap-1.5 px-3 py-2 border-b-4 border-transparent rounded-t-lg transition-all hover:font-bold hover:text-slate-900 hover:border-amber-400">
                         <span>{{ t("navManual") }}</span>
-                    </a>
+                    </button>
+                    <!-- ซ่อนแบบประเมินความพึงพอใจไว้ก่อน (2026-10-26) — เปิดกลับ: เอา comment ออก
                     <a href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
                         target="_blank" rel="noopener noreferrer"
                         class="flex items-center gap-1.5 px-3 py-2 border-b-4 border-transparent rounded-t-lg transition-all hover:font-bold hover:text-slate-900 hover:border-amber-400">
                         <span>{{ t("navFeedback") }}</span>
                     </a>
+                    -->
                 </nav>
 
                 <!-- เข้าสู่ระบบ (จอเล็ก เฉพาะตอนยังไม่ login) — อยู่นอก hamburger ด้วย กดจองได้ไวขึ้นไม่ต้องเปิดเมนูก่อน -->
@@ -750,17 +755,18 @@ const hideToast = () => {
                         class="px-3 py-2.5 text-left rounded-lg hover:bg-slate-50 hover:text-slate-900">
                         {{ t("navRules") }}
                     </button>
-                    <a :href="`${appBase}/pdf/tools.pdf`" target="_blank" rel="noopener noreferrer"
-                        @click="mobileMenuOpen = false"
-                        class="px-3 py-2.5 rounded-lg hover:bg-slate-50 hover:text-slate-900">
+                    <button @click="openModal('manual'); mobileMenuOpen = false"
+                        class="px-3 py-2.5 text-left rounded-lg hover:bg-slate-50 hover:text-slate-900">
                         {{ t("navManual") }}
-                    </a>
+                    </button>
+                    <!-- ซ่อนแบบประเมินความพึงพอใจไว้ก่อน (2026-10-26) — เปิดกลับ: เอา comment ออก
                     <a href="https://docs.google.com/forms/d/e/1FAIpQLSfG97U9yb9PcTXM3ORInGrNUfqQi3TYbxcsj7Y320h8QEEs7w/viewform?usp=dialog"
                         target="_blank" rel="noopener noreferrer"
                         @click="mobileMenuOpen = false"
                         class="px-3 py-2.5 rounded-lg hover:bg-slate-50 hover:text-slate-900">
                         {{ t("navFeedback") }}
                     </a>
+                    -->
                 </nav>
 
                 <!-- ภาษา / เข้าสู่ระบบ (มือถือ) -->
@@ -1201,7 +1207,7 @@ const hideToast = () => {
 
         <!-- ================= MODALS SECTION ================= -->
 
-        <!-- 1. คุกกี้ ยอมรับนโยบายความเป็นส่วนตัว (Cookie Consent Bar) -->
+        <!-- 1. แถบแจ้งการใช้คุกกี้ (Cookie Notice Bar) — แจ้งให้ทราบ ปุ่มเดียว -->
         <Transition name="fade">
         <div
             v-if="showCookieConsent"
@@ -1233,14 +1239,8 @@ const hideToast = () => {
                     class="flex items-center justify-end w-full gap-2 md:w-auto shrink-0"
                 >
                     <button
-                        @click="handleCookieConsent('declined')"
-                        class="w-1/2 px-4 py-2 text-xs font-semibold transition-all border rounded-lg border-slate-700 hover:bg-white hover:border-white text-slate-900 md:w-auto"
-                    >
-                        {{ t("cookieDecline") }}
-                    </button>
-                    <button
-                        @click="handleCookieConsent('accepted')"
-                        class="w-1/2 px-5 py-2 text-xs font-bold transition-all rounded-lg shadow-md bg-amber-500 hover:bg-amber-600 text-slate-950 md:w-auto"
+                        @click="acknowledgeCookies"
+                        class="w-full px-6 py-2 text-xs font-bold text-white transition-all rounded-lg shadow-md bg-slate-900 hover:bg-slate-800 md:w-auto"
                     >
                         {{ t("cookieAccept") }}
                     </button>
@@ -1320,115 +1320,35 @@ const hideToast = () => {
         </div>
         </Transition>
 
-        <!-- 4. ป๊อปอัพ คู่มือการใช้งาน (Manual Modal) -->
+        <!-- 4. ป๊อปอัพ คู่มือการใช้งาน (Manual Modal) — รูป infographic (public/imgs/tools)
+             จอเล็ก <768px ใช้ tools_mobile.png (แนวตั้ง) / จอใหญ่ใช้ tools.png (แนวนอน)
+             v-if (ไม่ใช่ v-show) = รูป ~1.5MB โหลดเฉพาะตอนเปิด ไม่ถ่วงหน้าแรก / กดพื้นหลัง หรือ Esc = ปิด -->
         <Transition name="fade">
         <div
-            v-show="modals.manual"
-            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+            v-if="modals.manual"
+            @click.self="closeModal('manual')"
+            class="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-900/70 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            :aria-label="t('navManual')"
         >
-            <div
-                class="w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-2xl border-slate-200"
-            >
-                <div
-                    class="flex items-center justify-between p-5 text-white bg-blue-900"
+            <div class="relative max-w-6xl max-h-full">
+                <button
+                    @click="closeModal('manual')"
+                    class="absolute z-10 flex items-center justify-center text-white transition-all rounded-full shadow-lg -top-2 -right-2 md:-top-3 md:-right-3 w-9 h-9 md:w-10 md:h-10 bg-slate-900/85 hover:bg-red-600 ring-2 ring-white"
+                    :title="t('btnClose')"
+                    :aria-label="t('btnClose')"
                 >
-                    <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-book-open text-amber-400"></i>
-                        <h3 class="text-sm font-bold font-prompt md:text-base">
-                            {{ t("manualHeader") }}
-                        </h3>
-                    </div>
-                    <button
-                        @click="closeModal('manual')"
-                        class="transition-colors text-slate-300 hover:text-white"
-                    >
-                        <i class="text-lg fa-solid fa-xmark"></i>
-                    </button>
-                </div>
-                <div
-                    class="p-6 max-h-[70vh] overflow-y-auto space-y-5 text-xs md:text-sm text-slate-600"
-                >
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-                        <!-- ขั้นตอนที่ 1 -->
-                        <div
-                            class="relative p-4 space-y-2 text-center border border-slate-200 rounded-xl bg-slate-50"
-                        >
-                            <span
-                                class="absolute flex items-center justify-center w-6 h-6 text-xs font-bold -translate-x-1/2 rounded-full -top-3 left-1/2 bg-amber-500 text-slate-950"
-                                >1</span
-                            >
-                            <div class="pt-2 text-2xl text-blue-900">
-                                <i class="fa-solid fa-right-to-bracket"></i>
-                            </div>
-                            <h4 class="font-bold text-slate-900">
-                                {{ t("step1") }}
-                            </h4>
-                            <p class="text-[11px] text-slate-500">
-                                {{ t("step1Desc") }}
-                            </p>
-                        </div>
-                        <!-- ขั้นตอนที่ 2 -->
-                        <div
-                            class="relative p-4 space-y-2 text-center border border-slate-200 rounded-xl bg-slate-50"
-                        >
-                            <span
-                                class="absolute flex items-center justify-center w-6 h-6 text-xs font-bold -translate-x-1/2 rounded-full -top-3 left-1/2 bg-amber-500 text-slate-950"
-                                >2</span
-                            >
-                            <div class="pt-2 text-2xl text-blue-900">
-                                <i class="fa-solid fa-hand-pointer"></i>
-                            </div>
-                            <h4 class="font-bold text-slate-900">
-                                {{ t("step2") }}
-                            </h4>
-                            <p class="text-[11px] text-slate-500">
-                                {{ t("step2Desc") }}
-                            </p>
-                        </div>
-                        <!-- ขั้นตอนที่ 3 -->
-                        <div
-                            class="relative p-4 space-y-2 text-center border border-slate-200 rounded-xl bg-slate-50"
-                        >
-                            <span
-                                class="absolute flex items-center justify-center w-6 h-6 text-xs font-bold -translate-x-1/2 rounded-full -top-3 left-1/2 bg-amber-500 text-slate-950"
-                                >3</span
-                            >
-                            <div class="pt-2 text-2xl text-blue-900">
-                                <i class="fa-solid fa-clock-rotate-left"></i>
-                            </div>
-                            <h4 class="font-bold text-slate-900">
-                                {{ t("step3") }}
-                            </h4>
-                            <p class="text-[11px] text-slate-500">
-                                {{ t("step3Desc") }}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div
-                        class="pt-4 space-y-2 text-xs border-t border-slate-200"
-                    >
-                        <h4 class="font-bold text-slate-900 font-prompt">
-                            <i class="fa-solid fa-lightbulb text-amber-500"></i>
-                            {{ t("manualTipsTitle") }}
-                        </h4>
-                        <ul class="list-disc list-inside space-y-1.5 pl-1">
-                            <li>{{ t("manualTip1") }}</li>
-                            <li>{{ t("manualTip2") }}</li>
-                            <li>{{ t("manualTip3") }}</li>
-                        </ul>
-                    </div>
-                </div>
-                <div
-                    class="flex justify-end px-6 py-4 border-t bg-slate-50 border-slate-200"
-                >
-                    <button
-                        @click="closeModal('manual')"
-                        class="px-5 py-2 text-xs font-bold text-white transition-all bg-blue-900 rounded-lg hover:bg-blue-950"
-                    >
-                        {{ t("btnClose") }}
-                    </button>
-                </div>
+                    <i class="text-lg fa-solid fa-xmark"></i>
+                </button>
+                <picture>
+                    <source media="(max-width: 767px)" :srcset="`${appBase}/imgs/tools/tools_mobile.png?v=20261027`" />
+                    <img
+                        :src="`${appBase}/imgs/tools/tools.png?v=20261027`"
+                        :alt="t('navManual')"
+                        class="block w-auto h-auto max-w-full max-h-[calc(100vh-1.5rem)] md:max-h-[calc(100vh-3rem)] rounded-xl shadow-2xl object-contain bg-white"
+                    />
+                </picture>
             </div>
         </div>
         </Transition>
@@ -1787,7 +1707,9 @@ const hideToast = () => {
                         <div v-if="selectedRoom?.confirm_type === 'manual'"
                             class="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800">
                             <i class="fa-solid fa-clock-rotate-left mt-0.5 shrink-0"></i>
-                            <span><span class="font-bold">จองได้เฉพาะวันนี้</span> — เจ้าหน้าที่จะอนุมัติเมื่อคุณมาถึง</span>
+                            <!-- มี kiosk: สแกนเองได้ หรือให้เจ้าหน้าที่ช่วย / ไม่มี kiosk: ต้องผ่านเคาน์เตอร์ -->
+                            <span v-if="selectedRoom?.access_control === '1'"><span class="font-bold">จองได้เฉพาะวันนี้</span> — สแกนบัตรที่ kiosk หน้าห้องหรือติดต่อเจ้าหน้าที่ที่เคาน์เตอร์ภายใน 15 นาทีหลังเริ่มเวลาจอง</span>
+                            <span v-else><span class="font-bold">จองได้เฉพาะวันนี้</span> — ติดต่อเจ้าหน้าที่ที่เคาน์เตอร์ก่อนเข้าใช้บริการ</span>
                         </div>
                         <div v-else-if="selectedRoom?.confirm_type === 'auto'"
                             class="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800">
