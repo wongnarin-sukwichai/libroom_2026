@@ -25,11 +25,12 @@ npm run dev            # frontend (ต้องการ Node.js 22+)
 **Dev login:**
 ```
 http://127.0.0.1:8000/dev/login-as-member   # member 1 (test.member@msu.ac.th)
-http://127.0.0.1:8000/dev/login-as-member2  # member 2
-http://127.0.0.1:8000/dev/login-as-member3  # member 3
+http://127.0.0.1:8000/dev/login-as-member2  # member 2 (test.member2@msu.ac.th)
+http://127.0.0.1:8000/dev/login-as-member3  # member 3 (test.member3@msu.ac.th)
+http://127.0.0.1:8000/dev/login-as-staff    # staff (test.staff@msu.ac.th) — เห็นเมนูแบบ staff
 http://127.0.0.1:8000/dev/login-as-admin    # admin (wongnarin.s@msu.ac.th)
 ```
-ต้องรัน `php artisan db:seed` ก่อน
+member 1–3 และ staff สร้างให้อัตโนมัติถ้ายังไม่มี (`firstOrCreate`); admin ต้องรัน `php artisan db:seed` ก่อน — ทั้งหมดทำงานเฉพาะ `APP_ENV=local`
 
 ---
 
@@ -168,9 +169,9 @@ settings   (key–value config ทั้งระบบ)
 | GET | `/dashboard` | Admin dashboard (SPA) |
 | GET | `/admin/overview-stats` | สถิติภาพรวม |
 | GET | `/admin/overview-service` (+ `/api/overview-service`) | การ์ด "สถิติการเข้าใช้บริการรายพื้นที่" — จาก `UsageStats` ของระบบนี้ (เลิก proxy ระบบเก่าแล้ว 2026-10-27; คงคีย์ `arec/dlp/space` ไว้ให้ผู้เรียกภายนอกเดิม) |
-| GET | `/admin/bookings` | รายการ booking ทั้งหมด |
+| GET | `/admin/bookings` | รายการ booking ทั้งหมด — `waiting_confirm` ขึ้นบนสุดเสมอ; แต่ละรอบมี `members` / `member_count` / `min_capacity` (คอลัมน์สมาชิกกดกางรายชื่อ) |
 | GET | `/admin/bookings/room-day?room_id=&date=` | ผังห้อง: ช่องเวลา + รายชื่อผู้จองต่อช่อง (session ข้ามชั่วโมงโชว์ทุกช่อง + `is_continuation`) |
-| GET | `/admin/bookings/board-summary?date=` | ผังห้อง: จำนวน pending/booked ต่อห้อง (จุดสีบนปุ่มห้อง) |
+| GET | `/admin/bookings/board-summary?date=` | ผังห้อง: จำนวน `waiting` (รอเจ้าหน้าที่อนุมัติ, ส้มกะพริบ) / `pending` (รอสมาชิกครบ, เทา) / `booked` ต่อห้อง |
 | POST | `/admin/bookings/approve` | Approve session (→ confirmed, ไม่เช็คอิน) |
 | POST | `/admin/bookings/reject` | Reject session (pending/waiting → cancelled) |
 | POST | `/admin/bookings/checkin` | เจ้าหน้าที่กดเช็คอิน (ห้อง access_control=0) |

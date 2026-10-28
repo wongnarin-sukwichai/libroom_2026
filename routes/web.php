@@ -101,25 +101,38 @@ Route::middleware('auth:admin')->group(function () {
     Route::get('/admin/rooms', [AdminRoomController::class, 'index']);
 });
 
-// Dev only — simulate member/admin login (ลบออกก่อน deploy จริง)
+// Dev only — simulate member/admin/staff login (ทำงานเฉพาะ APP_ENV=local)
 if (app()->environment('local')) {
-    Route::get('/dev/login-as-member', function () {
-        $member = \App\Models\Member::where('email', 'test.member@msu.ac.th')->firstOrFail();
-        \Illuminate\Support\Facades\Auth::login($member);
+    // member ทดสอบ 3 คน — ยังไม่มีในฐานข้อมูลก็สร้างให้เลย (ใช้ทดสอบ join กลุ่มหลายบัญชี)
+    $devMember = fn (string $email, string $name) => \App\Models\Member::firstOrCreate(
+        ['email' => $email],
+        ['name' => $name, 'google_id' => 'dev-' . md5($email)],
+    );
+
+    Route::get('/dev/login-as-member', function () use ($devMember) {
+        \Illuminate\Support\Facades\Auth::login($devMember('test.member@msu.ac.th', 'Test Member'));
         return redirect()->route('welcome');
     })->name('dev.login-member');
 
-    Route::get('/dev/login-as-member2', function () {
-        $member = \App\Models\Member::where('email', 'test.member2@msu.ac.th')->firstOrFail();
-        \Illuminate\Support\Facades\Auth::login($member);
+    Route::get('/dev/login-as-member2', function () use ($devMember) {
+        \Illuminate\Support\Facades\Auth::login($devMember('test.member2@msu.ac.th', 'Test Member 2'));
         return redirect()->route('welcome');
     })->name('dev.login-member2');
 
-    Route::get('/dev/login-as-member3', function () {
-        $member = \App\Models\Member::where('email', 'test.member3@msu.ac.th')->firstOrFail();
-        \Illuminate\Support\Facades\Auth::login($member);
+    Route::get('/dev/login-as-member3', function () use ($devMember) {
+        \Illuminate\Support\Facades\Auth::login($devMember('test.member3@msu.ac.th', 'Test Member 3'));
         return redirect()->route('welcome');
     })->name('dev.login-member3');
+
+    // staff ทดสอบ — เห็นแค่ ภาพรวม / จัดการคำขอจอง / สถิติ (ไม่เห็นหมวด "ตั้งค่าระบบ")
+    Route::get('/dev/login-as-staff', function () {
+        $staff = \App\Models\User::firstOrCreate(
+            ['email' => 'test.staff@msu.ac.th'],
+            ['name' => 'Test Staff', 'role' => 'staff', 'google_id' => 'dev-staff'],
+        );
+        \Illuminate\Support\Facades\Auth::guard('admin')->login($staff);
+        return redirect()->route('admin.dashboard');
+    })->name('dev.login-staff');
 
     Route::get('/dev/login-as-admin', function () {
         $admin = \App\Models\User::where('email', 'wongnarin.s@msu.ac.th')->firstOrFail();

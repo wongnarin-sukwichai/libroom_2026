@@ -350,7 +350,7 @@ const logoutAdmin = async () => {
                             v-if="pendingCount > 0"
                             :class="isSidebarCollapsed ? 'absolute top-1.5 right-1.5' : 'ml-auto'"
                             class="relative flex"
-                            :title="`${pendingCount} รายการรอเจ้าหน้าที่`"
+                            :title="`${pendingCount} รายการรอเจ้าหน้าที่อนุมัติ`"
                         >
                             <!-- วงสัญญาณกระเพื่อมตลอดเวลาที่มีงานค้าง -->
                             <span class="absolute inset-0 rounded-full bg-amber-400 opacity-75 animate-ping motion-reduce:animate-none"></span>

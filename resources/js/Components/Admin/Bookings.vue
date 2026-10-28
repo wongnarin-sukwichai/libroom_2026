@@ -25,6 +25,9 @@ interface BookingRow {
     cancelled_by?: string | null;
     cancel_reason?: string | null;
     cancelled_at?: string | null;
+    members: { name: string; email: string | null; is_lead: boolean; status: string }[];
+    member_count: number;
+    min_capacity: number;
 }
 
 interface Paginated {
@@ -87,13 +90,16 @@ const fmtDate = (iso: string) => {
 };
 
 const statusConfig: Record<string, { label: string; cls: string }> = {
+    // เทา = ยังไม่ใช่งานของเจ้าหน้าที่ (รอนิสิตชวนเพื่อนให้ครบ)
     pending: {
         label: "รอสมาชิกครบ",
-        cls: "bg-amber-100 text-amber-700 border-amber-200",
+        cls: "bg-slate-100 text-slate-600 border-slate-200",
     },
+    // อำพัน = งานที่เจ้าหน้าที่ต้องกดอนุมัติ (ไม่กะพริบ — กะพริบแล้วจางกว่าป้ายเทา) — สีเดียวกับกล่อง "N รายการรอเจ้าหน้าที่อนุมัติ",
+    // ตัวเลขบนแท็บ และ badge ในเมนู (ความหมายเดียวกัน = สีเดียวกัน)
     waiting_confirm: {
-        label: "รอเจ้าหน้าที่",
-        cls: "bg-orange-100 text-orange-700 border-orange-200 animate-pulse",
+        label: "รอเจ้าหน้าที่อนุมัติ",
+        cls: "bg-amber-50 text-amber-700 border-amber-200",
     },
     confirmed: {
         label: "ยืนยันแล้ว",
@@ -105,9 +111,24 @@ const statusConfig: Record<string, { label: string; cls: string }> = {
     },
 };
 
+// ผู้เข้าร่วม — แสดงเฉพาะการจองแบบกลุ่ม, รายชื่อพับไว้ กดกางทีละแถว
+const isGroup = (row: BookingRow) => row.min_capacity > 1 || row.member_count > 1;
+const openMembers = ref<Set<number>>(new Set());
+const toggleMembers = (row: BookingRow) => {
+    const s = new Set(openMembers.value);
+    const k = row.ids[0];
+    s.has(k) ? s.delete(k) : s.add(k);
+    openMembers.value = s;
+};
+const memberStatusLabel: Record<string, string> = {
+    checked_in: "เช็คอินแล้ว", no_show: "ไม่มา", cancelled: "ยกเลิก",
+};
+
 const canAct = (row: BookingRow) =>
     row.confirm_type === "manual" &&
     (row.status === "pending" || row.status === "waiting_confirm");
+// อนุมัติได้เฉพาะเมื่อสมาชิกครบแล้ว (waiting_confirm) — รอสมาชิกครบ (pending) ปฏิเสธได้อย่างเดียว
+const canApprove = (row: BookingRow) => row.confirm_type === "manual" && row.status === "waiting_confirm";
 
 // เช็คอินโดยเจ้าหน้าที่ — ยืนยันแล้ว, ยังไม่เช็คอิน, วันนี้
 // รวมห้องมี kiosk ด้วย (นิสิตมาเคาน์เตอร์แทนการสแกน — ตามข้อความในการ์ดจองหน้าแรก)
@@ -345,10 +366,10 @@ onMounted(() => fetch());
 
             <div class="flex items-center gap-3 ml-auto">
                 <span
-                    v-if="viewMode === 'list' && paginated.pending_count > 0"
+                    v-if="paginated.pending_count > 0"
                     class="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-xl font-bold"
                 >
-                    {{ paginated.pending_count }} รายการรอเจ้าหน้าที่
+                    {{ paginated.pending_count }} รายการรอเจ้าหน้าที่อนุมัติ
                 </span>
                 <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
                     <button
@@ -369,7 +390,8 @@ onMounted(() => fetch());
             </div>
         </div>
 
-        <BookingBoard v-if="viewMode === 'board'" :date="boardDate" />
+        <!-- ผังห้องกดอนุมัติ/ปฏิเสธ/เช็คอิน แล้ว → ดึงรายการใหม่ ให้ตัวเลข "รายการรอเจ้าหน้าที่อนุมัติ" + badge เมนูตรงกัน -->
+        <BookingBoard v-if="viewMode === 'board'" :date="boardDate" @changed="fetch(paginated.current_page)" />
 
         <template v-else>
         <!-- Tabs -->
@@ -472,6 +494,39 @@ onMounted(() => fetch());
                                     <div class="text-[10px] text-slate-400">
                                         {{ row.member_email }}
                                     </div>
+                                    <!-- ผู้เข้าร่วม (การจองแบบกลุ่ม) -->
+                                    <div v-if="isGroup(row)" class="mt-1.5">
+                                        <button
+                                            @click="toggleMembers(row)"
+                                            class="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors"
+                                            :class="row.member_count >= row.min_capacity
+                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
+                                            :title="openMembers.has(row.ids[0]) ? 'ซ่อนรายชื่อ' : 'ดูรายชื่อผู้เข้าร่วม'"
+                                        >
+                                            <i class="fa-solid fa-user-group"></i>
+                                            {{ row.member_count }} / {{ row.min_capacity }} คน
+                                            <i class="fa-solid text-[8px]" :class="openMembers.has(row.ids[0]) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                        </button>
+                                        <ul v-if="openMembers.has(row.ids[0])" class="mt-1.5 space-y-1 max-w-[240px]">
+                                            <li v-for="(m, i) in row.members" :key="i" class="flex items-start gap-1.5 text-[10px] leading-tight">
+                                                <i class="w-3 mt-0.5 text-center shrink-0"
+                                                    :class="m.is_lead ? 'fa-solid fa-crown text-amber-500' : 'fa-solid fa-user text-slate-300'"
+                                                    :title="m.is_lead ? 'หัวหน้ากลุ่ม' : 'สมาชิก'"></i>
+                                                <div class="min-w-0">
+                                                    <div class="font-semibold truncate text-slate-700">
+                                                        {{ m.name }}
+                                                        <span v-if="memberStatusLabel[m.status]" class="font-normal"
+                                                            :class="m.status === 'checked_in' ? 'text-emerald-600' : 'text-red-500'">
+                                                            · {{ memberStatusLabel[m.status] }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="truncate text-slate-400">{{ m.email }}</div>
+                                                </div>
+                                            </li>
+                                            <li v-if="!row.members.length" class="text-[10px] text-slate-300">ไม่มีรายชื่อ</li>
+                                        </ul>
+                                    </div>
                                 </td>
                                 <td class="p-4">
                                     <div class="font-semibold text-slate-800">
@@ -528,6 +583,7 @@ onMounted(() => fetch());
                                         class="flex justify-end gap-1.5"
                                     >
                                         <button
+                                            v-if="canApprove(row)"
                                             @click="approve(row)"
                                             class="bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] transition-all flex items-center gap-1"
                                         >

@@ -41,11 +41,12 @@ class AdminBookingController extends Controller
 
         $query = BookingGroup::with([
             'room'               => fn($q) => $q->select('id', 'zone_id', 'title', 'confirm_type', 'access_control'),
-            'room.zone'          => fn($q) => $q->select('id', 'loc_id', 'title'),
+            'room.zone'          => fn($q) => $q->select('id', 'loc_id', 'title', 'min_capacity'),
             'room.zone.location' => fn($q) => $q->select('id', 'title'),
             'lead'               => fn($q) => $q->select('id', 'name', 'email', 'type'),
             'admin'              => fn($q) => $q->select('id', 'name', 'email'),
-            'bookings'           => fn($q) => $q->select('id', 'group_id', 'status'),
+            'bookings'           => fn($q) => $q->select('id', 'group_id', 'user_id', 'status'),
+            'bookings.member'    => fn($q) => $q->select('id', 'name', 'email'),
         ])
         ->when($date && ! $isCancelled, fn($q) => $q->where('date', $date))
         ->when($date && $isCancelled, fn($q) => $q->whereRaw("DATE({$cancelledAt}) = ?", [$date]))
@@ -61,7 +62,8 @@ class AdminBookingController extends Controller
                     ->orWhereHas('room',  fn($r) => $r->where('title', 'like', $like));
             });
         })
-        ->orderByRaw("FIELD(status, 'pending', 'waiting_confirm', 'confirmed', 'cancelled')")
+        // "รอเจ้าหน้าที่อนุมัติ" ขึ้นบนสุดเสมอ (งานที่ต้องกด) → แล้วค่อย "รอสมาชิกครบ"
+        ->orderByRaw("FIELD(status, 'waiting_confirm', 'pending', 'confirmed', 'cancelled')")
         // ยกเลิกล่าสุดขึ้นก่อน (slot ในรอบเดียวกันถูกยกเลิกพร้อมกัน → เวลาเท่ากัน จึงยังติดกันให้ groupIntoSessions รวมได้)
         ->when($isCancelled, fn($q) => $q->orderByRaw("{$cancelledAt} DESC"))
         ->orderBy('date')
@@ -154,12 +156,31 @@ class AdminBookingController extends Controller
                     'cancelled_by'  => $g->cancelled_by,
                     'cancel_reason' => $g->cancel_reason,
                     'cancelled_at'  => ($g->cancelled_at ?? $g->updated_at)?->format('Y-m-d H:i'),
+                    'min_capacity'  => (int) ($g->room?->zone?->min_capacity ?? 1),
+                    'members'       => $this->sessionMembers($g),
                 ];
             }
         }
         if ($current) $sessions[] = $this->formatSession($current);
 
         return $sessions;
+    }
+
+    /**
+     * รายชื่อผู้เข้าร่วมของรอบ (ใช้ slot แรกของรอบ — ทุก slot มีสมาชิกชุดเดียวกัน) หัวหน้ากลุ่มขึ้นก่อน
+     * รอบที่ยกเลิกแล้ว: แสดงทุกคน (ดูย้อนหลังว่าใครอยู่ในกลุ่ม) / รอบอื่น: ไม่นับคนที่ถอน (cancelled)
+     */
+    private function sessionMembers(BookingGroup $g): array
+    {
+        return $g->bookings
+            ->when($g->status !== 'cancelled', fn($c) => $c->reject(fn($b) => $b->status === 'cancelled'))
+            ->sortByDesc(fn($b) => $b->user_id === $g->lead_user_id)
+            ->map(fn($b) => [
+                'name'    => $b->member?->name ?? '—',
+                'email'   => $b->member?->email,
+                'is_lead' => $b->user_id === $g->lead_user_id,
+                'status'  => $b->status,
+            ])->values()->all();
     }
 
     private function formatSession(array $s): array
@@ -180,6 +201,9 @@ class AdminBookingController extends Controller
             'start_hour'     => $s['start_hour'],
             'end_hour'       => $s['end_hour'],
             'hours'          => $s['hours'],
+            'members'        => $s['members'] ?? [],
+            'member_count'   => count($s['members'] ?? []),
+            'min_capacity'   => $s['min_capacity'] ?? 1,
             'status'         => $s['status'],
             'source'         => $s['source'] ?? 'web',
             'confirm_type'   => $s['confirm_type'],
@@ -300,6 +324,13 @@ class AdminBookingController extends Controller
             }
         }
 
+        // ในแต่ละช่องเวลา: "รอเจ้าหน้าที่อนุมัติ" ขึ้นก่อนเสมอ (เหมือนหน้ารายการ)
+        $rank = ['waiting_confirm' => 0, 'pending' => 1, 'confirmed' => 2];
+        foreach ($slots as &$slot) {
+            usort($slot['groups'], fn($a, $b) => ($rank[$a['status']] ?? 9) <=> ($rank[$b['status']] ?? 9));
+        }
+        unset($slot);
+
         return response()->json([
             'room' => [
                 'id'             => $room->id,
@@ -320,9 +351,11 @@ class AdminBookingController extends Controller
     {
         $date = $request->validate(['date' => 'required|date'])['date'];
 
+        // waiting = รอเจ้าหน้าที่อนุมัติ (ส้ม) / pending = รอสมาชิกครบ (เทา) — แยกกันให้สีตรงกับหน้ารายการ
         $rows = BookingGroup::selectRaw(
                 "room_id,
-                 SUM(status IN ('pending','waiting_confirm')) as pending,
+                 SUM(status = 'waiting_confirm') as waiting,
+                 SUM(status = 'pending') as pending,
                  SUM(status = 'confirmed') as booked"
             )
             ->where('date', $date)
@@ -332,7 +365,7 @@ class AdminBookingController extends Controller
 
         $out = [];
         foreach ($rows as $r) {
-            $out[$r->room_id] = ['pending' => (int) $r->pending, 'booked' => (int) $r->booked];
+            $out[$r->room_id] = ['waiting' => (int) $r->waiting, 'pending' => (int) $r->pending, 'booked' => (int) $r->booked];
         }
 
         return response()->json($out);
@@ -496,10 +529,15 @@ class AdminBookingController extends Controller
     {
         $ids = $request->validate(['ids' => 'required|array', 'ids.*' => 'integer'])['ids'];
 
+        // อนุมัติได้เฉพาะรอบที่สมาชิกครบแล้ว (waiting_confirm) — pending (รอสมาชิกครบ) ห้ามข้ามขั้น (2026-10-28)
         $groups = BookingGroup::with('room')
             ->whereIn('id', $ids)
-            ->whereIn('status', ['pending', 'waiting_confirm'])
+            ->where('status', 'waiting_confirm')
             ->get();
+
+        if ($groups->isEmpty()) {
+            return response()->json(['message' => 'อนุมัติได้เฉพาะรายการที่สมาชิกครบแล้ว (รอเจ้าหน้าที่อนุมัติ)'], 422);
+        }
 
         foreach ($groups as $g) {
             $g->update(['status' => 'confirmed']);

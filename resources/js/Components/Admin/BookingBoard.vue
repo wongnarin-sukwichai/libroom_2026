@@ -31,9 +31,11 @@ interface DayData {
     is_weekend: boolean;
     slots: DaySlot[];
 }
-type Summary = Record<number, { pending: number; booked: number }>;
+type Summary = Record<number, { waiting: number; pending: number; booked: number }>;
 
 const props = defineProps<{ date: string }>();
+// แจ้งหน้า Bookings ให้ดึงตัวเลข "รายการรอเจ้าหน้าที่อนุมัติ" ใหม่ หลังกด action ในผังห้อง
+const emit = defineEmits<{ changed: [] }>();
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }; // เวลาเครื่อง ไม่ใช่ UTC
 
@@ -53,8 +55,9 @@ const fmtDate = (iso: string) => {
 };
 
 const statusConfig: Record<string, { label: string; cls: string; dot: string }> = {
-    pending:         { label: "รอสมาชิกครบ", cls: "bg-amber-100 text-amber-700 border-amber-200",   dot: "bg-amber-400" },
-    waiting_confirm: { label: "รอเจ้าหน้าที่", cls: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-400" },
+    pending:         { label: "รอสมาชิกครบ", cls: "bg-slate-100 text-slate-600 border-slate-200",   dot: "bg-slate-400" },
+    // สีให้ตรงกับหน้ารายการ (Bookings.vue)
+    waiting_confirm: { label: "รอเจ้าหน้าที่อนุมัติ", cls: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-500" },
     confirmed:       { label: "ยืนยันแล้ว",   cls: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-400" },
     checked_in:      { label: "เช็คอินแล้ว",  cls: "bg-blue-100 text-blue-700 border-blue-200",     dot: "bg-blue-500" },
     no_show:         { label: "ไม่มา",        cls: "bg-red-100 text-red-600 border-red-200",        dot: "bg-red-400" },
@@ -62,7 +65,8 @@ const statusConfig: Record<string, { label: string; cls: string; dot: string }> 
 const sourceConfig: Record<string, { label: string; cls: string }> = {
     web:   { label: "เว็บ",       cls: "bg-slate-100 text-slate-500 border-slate-200" },
     qr:    { label: "QR",         cls: "bg-indigo-100 text-indigo-600 border-indigo-200" },
-    staff: { label: "เจ้าหน้าที่", cls: "bg-amber-100 text-amber-700 border-amber-200" },
+    // ม่วง — ไม่ใช้อำพัน เพราะอำพันสงวนไว้ให้ "รอเจ้าหน้าที่อนุมัติ"
+    staff: { label: "เจ้าหน้าที่", cls: "bg-purple-100 text-purple-700 border-purple-200" },
 };
 const occStatus = (s: string) => statusConfig[s] ?? { label: s, cls: "", dot: "bg-slate-300" };
 
@@ -120,8 +124,11 @@ const roomStatus = (room: BRoom) => {
     if (room.status === "1")
         return { dot: "bg-slate-300", label: "ปิด",       badgeBg: "bg-slate-100", icon: "text-slate-400", text: "text-slate-400" };
     const s = summary.value[room.id];
+    // ลำดับความสำคัญ: รอเจ้าหน้าที่อนุมัติ (อำพัน) > รอสมาชิกครบ (เทา) > มีจอง (น้ำเงิน) — สีเดียวกับหน้ารายการ
+    if (s?.waiting)
+        return { dot: "bg-amber-500", label: "รอเจ้าหน้าที่อนุมัติ", badgeBg: "bg-amber-50", icon: "text-amber-500", text: "text-amber-700" };
     if (s?.pending)
-        return { dot: "bg-amber-400", label: "รอยืนยัน", badgeBg: "bg-amber-100", icon: "text-amber-500", text: "text-amber-600" };
+        return { dot: "bg-slate-400", label: "รอสมาชิกครบ", badgeBg: "bg-slate-100", icon: "text-slate-500", text: "text-slate-600" };
     if (s?.booked)
         return { dot: "bg-blue-500",  label: "มีจอง",     badgeBg: "bg-blue-100",  icon: "text-blue-500",  text: "text-blue-600" };
     return { dot: "bg-slate-300", label: "ว่าง", badgeBg: "bg-slate-100", icon: "text-slate-400", text: "text-slate-500" };
@@ -132,7 +139,11 @@ const isToday = computed(() => props.date === todayStr());
 // actions ─────────────────────────────────────────────
 const acting = ref(false);
 
+// อนุมัติได้เฉพาะเมื่อสมาชิกครบแล้ว (waiting_confirm) / ปฏิเสธได้ทั้งรอสมาชิกครบและรออนุมัติ
 function canApprove(g: SlotGroup) {
+    return day.value?.room.confirm_type === "manual" && g.status === "waiting_confirm";
+}
+function canReject(g: SlotGroup) {
     return day.value?.room.confirm_type === "manual" &&
         (g.status === "pending" || g.status === "waiting_confirm");
 }
@@ -157,6 +168,7 @@ async function endEarly(g: SlotGroup) {
     try {
         const { data } = await axios.post("/admin/bookings/end-early", { ids: g.ids, reason: reason || undefined });
         await Promise.all([fetchDay(), fetchSummary()]);
+        emit("changed");
         const h = slotModal.value?.hour;
         slotModal.value = h != null ? day.value?.slots.find(s => s.hour === h) ?? null : null;
         Swal.fire({ title: "เลิกใช้ก่อนเวลาแล้ว", text: data.message, icon: "success", timer: 1600, showConfirmButton: false });
@@ -186,6 +198,7 @@ async function runAction(url: string, g: SlotGroup, confirmText: string, okText:
     try {
         await axios.post(url, { ids: g.ids, reason: withReason ? (r.value || undefined) : undefined });
         await Promise.all([fetchDay(), fetchSummary()]);
+        emit("changed");
         const h = slotModal.value?.hour;
         slotModal.value = h != null ? day.value?.slots.find(s => s.hour === h) ?? null : null;
         Swal.fire({ title: "สำเร็จ", icon: "success", timer: 1000, showConfirmButton: false });
@@ -236,7 +249,8 @@ onMounted(async () => {
                     </div>
 
                     <div class="flex items-center flex-wrap gap-3 text-[11px] text-slate-400 ml-auto">
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400"></span>มีคำขอรอ</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span>รอเจ้าหน้าที่อนุมัติ</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-400"></span>รอสมาชิกครบ</span>
                         <span class="flex items-center gap-1"><span class="w-2 h-2 bg-blue-500 rounded-full"></span>มีจอง</span>
                         <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-300"></span>ว่าง / ปิด</span>
                     </div>
@@ -314,6 +328,9 @@ onMounted(async () => {
                                 >
                                     <span class="font-bold truncate max-w-[140px]">{{ g.lead_name }}</span>
                                     <span class="opacity-60">·</span>
+                                    <!-- ชื่อสถานะ (เหมือนป้ายในหน้ารายการ) -->
+                                    <span class="font-semibold">{{ statusConfig[g.status]?.label ?? g.status }}</span>
+                                    <span class="opacity-60">·</span>
                                     <span><i class="fa-solid fa-user-group text-[9px] mr-0.5"></i>{{ g.occupants.length }}</span>
                                     <span v-if="g.is_continuation" class="opacity-60">(ต่อเนื่อง)</span>
                                     <span v-else-if="g.hours > 1" class="opacity-60">{{ g.hours }} ชม.</span>
@@ -380,7 +397,7 @@ onMounted(async () => {
                                 class="bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] disabled:opacity-50">
                                 <i class="mr-1 fa-solid fa-check"></i>อนุมัติ
                             </button>
-                            <button v-if="canApprove(g)" :disabled="acting" @click="reject(g)"
+                            <button v-if="canReject(g)" :disabled="acting" @click="reject(g)"
                                 class="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-red-200 disabled:opacity-50">
                                 ปฏิเสธ
                             </button>
