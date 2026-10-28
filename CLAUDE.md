@@ -150,7 +150,7 @@ settings   (key–value config ทั้งระบบ)
 | GET | `/` | Welcome page |
 | GET | `/rooms/{room}/slots?date=Y-m-d` | Time slots + booked_ids + quota สำหรับห้อง+วันที่ |
 | POST | `/bookings` | สร้างการจอง (auth required) |
-| GET | `/my-bookings` | ประวัติการจองของ member |
+| GET | `/my-bookings` | ประวัติการจองของ member — การจองแบบกลุ่มแสดง `members` (ชื่อ+อีเมล, หัวหน้ากลุ่มก่อน, ไม่นับที่ยกเลิก) เห็นเฉพาะคนในกลุ่ม |
 | POST | `/booking-groups/{group}/cancel` | ยกเลิกการจอง |
 | GET | `/join/{token}` | หน้า join session |
 | POST | `/join/{token}` | เข้าร่วม session |

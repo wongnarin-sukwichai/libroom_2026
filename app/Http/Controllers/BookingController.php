@@ -70,15 +70,28 @@ class BookingController extends Controller
             })
             ->with([
                 'room'               => fn($q) => $q->select('id', 'zone_id', 'title', 'confirm_type'),
-                'room.zone'          => fn($q) => $q->select('id', 'loc_id', 'title'),
+                // min_capacity ต้อง select มาด้วย — เดิมไม่มี ทำให้ "สมาชิก x/y" เป็น /1 เสมอ
+                'room.zone'          => fn($q) => $q->select('id', 'loc_id', 'title', 'min_capacity'),
                 'room.zone.location' => fn($q) => $q->select('id', 'title'),
                 'lead'               => fn($q) => $q->select('id', 'name'),
+                'bookings'           => fn($q) => $q->select('id', 'group_id', 'user_id', 'status')->where('status', '!=', 'cancelled'),
+                'bookings.member'    => fn($q) => $q->select('id', 'name', 'email'),
             ])
             ->orderByDesc('date')
             ->orderByDesc('time_id')
             ->get()
             ->map(function ($g) use ($member) {
                 $isLeader = $g->lead_user_id === $member->id;
+                // ผู้เข้าร่วมในกลุ่ม (เห็นเฉพาะคนในกลุ่มเดียวกัน — query นี้กรองแล้วว่า member อยู่ในกลุ่ม) หัวหน้ากลุ่มขึ้นก่อน
+                $members = $g->bookings
+                    ->sortByDesc(fn($b) => $b->user_id === $g->lead_user_id)
+                    ->map(fn($b) => [
+                        'name'    => $b->member?->name ?? '—',
+                        'email'   => $b->member?->email,
+                        'is_lead' => $b->user_id === $g->lead_user_id,
+                        'is_me'   => $b->user_id === $member->id,
+                        'status'  => $b->status,
+                    ])->values();
                 return [
                     'id'           => $g->id,
                     'date'         => $g->date->format('Y-m-d'),
@@ -89,7 +102,8 @@ class BookingController extends Controller
                     'room_title'   => $g->room?->title,
                     'zone_title'   => $g->room?->zone?->title,
                     'loc_title'    => $g->room?->zone?->location?->title,
-                    'member_count' => $g->bookings()->count(),
+                    'member_count' => $members->count(),
+                    'members'      => $members,
                     'min_capacity' => $g->room?->zone?->min_capacity ?? 1,
                     'is_leader'    => $isLeader,
                     'lead_name'    => $g->lead?->name,

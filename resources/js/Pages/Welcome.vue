@@ -156,6 +156,7 @@ const translations = {
         cookieDesc:
             "เว็บไซต์นี้ใช้คุกกี้ที่จำเป็นต่อการเข้าสู่ระบบและการจองเท่านั้น ไม่มีคุกกี้ติดตามหรือโฆษณา",
         cookieAccept: "รับทราบ",
+        cookiePolicy: "นโยบายคุ้มครองข้อมูลส่วนบุคคล",
         rulesHeader: "ระเบียบและข้อปฏิบัติในการเข้าใช้บริการพื้นที่",
         rulesNotice:
             "กรุณาปฏิบัติตามกฎกติกาอย่างเคร่งครัดเพื่อความเป็นระเบียบและบรรยากาศที่ดีสำหรับทุกคน",
@@ -227,6 +228,7 @@ const translations = {
         cookieDesc:
             "This website uses only the cookies required for signing in and booking. No tracking or advertising cookies.",
         cookieAccept: "Got it",
+        cookiePolicy: "Privacy Policy",
         rulesHeader: "Rules and Conditions of Use",
         rulesNotice:
             "Please behave ethically and strictly follow regulations to maintain a positive study environment.",
@@ -1232,6 +1234,10 @@ const hideToast = () => {
                             class="max-w-4xl mt-1 text-xs leading-relaxed text-slate-800"
                         >
                             {{ t("cookieDesc") }}
+                            <a href="https://pdpa.msu.ac.th/" target="_blank" rel="noopener noreferrer"
+                                class="ml-1 font-bold underline text-slate-900 underline-offset-2 hover:text-blue-900 whitespace-nowrap">
+                                {{ t("cookiePolicy") }} <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                            </a>
                         </p>
                     </div>
                 </div>

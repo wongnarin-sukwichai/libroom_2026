@@ -5,6 +5,16 @@ import Swal from 'sweetalert2';
 
 const props = defineProps({ bookings: Array });
 
+// แสดงรายชื่อผู้เข้าร่วมเฉพาะการจองแบบกลุ่ม (ต้องมีสมาชิกขั้นต่ำ >1 หรือมีคน join แล้ว)
+const isGroup = (b) => (b.min_capacity ?? 1) > 1 || (b.members?.length ?? 0) > 1;
+// ประวัติ: พับรายชื่อไว้ กดดูทีละรายการ
+const openMembers = ref(new Set());
+const toggleMembers = (id) => {
+    const s = new Set(openMembers.value);
+    s.has(id) ? s.delete(id) : s.add(id);
+    openMembers.value = s;
+};
+
 const appBase  = window.APP_BASE ?? '';
 const page     = usePage();
 const authUser = computed(() => page.props.auth?.user ?? null);
@@ -144,10 +154,29 @@ const copyLink = (url) => {
                                 <div v-if="!b.is_leader">
                                     <i class="fa-solid fa-user-tie mr-1.5 text-slate-300"></i>หัวหน้ากลุ่ม: {{ b.lead_name ?? '—' }}
                                 </div>
-                                <div v-if="b.status === 'pending' && b.member_count < b.min_capacity">
-                                    <i class="fa-solid fa-users mr-1.5 text-slate-300"></i>
-                                    <span class="font-semibold text-amber-600">สมาชิก {{ b.member_count }}/{{ b.min_capacity }} คน</span>
+                            </div>
+
+                            <!-- สมาชิกในกลุ่ม — หน้าตาเดียวกับ modal หลังจองห้อง (Welcome.vue joinShare) แต่แทนข้อความ "ต้องการอีก N คน" ด้วยรายชื่อ -->
+                            <div v-if="isGroup(b)" class="p-4 mt-3 border border-blue-200 bg-blue-50 rounded-xl">
+                                <div class="flex items-center justify-between mb-2 text-xs">
+                                    <span class="font-semibold text-blue-900">สมาชิกในกลุ่ม</span>
+                                    <span class="font-bold text-blue-900">{{ b.member_count }} / {{ b.min_capacity }} คน</span>
                                 </div>
+                                <div class="w-full h-2 overflow-hidden bg-blue-200 rounded-full">
+                                    <div class="h-full bg-blue-600 rounded-full"
+                                        :style="{ width: Math.min(100, (b.member_count / b.min_capacity) * 100) + '%' }">
+                                    </div>
+                                </div>
+                                <ul class="mt-2 space-y-1">
+                                    <li v-for="(m, i) in b.members" :key="i" class="flex items-center gap-1.5 text-[11px] text-blue-600 min-w-0">
+                                        <i class="w-3 text-center shrink-0"
+                                            :class="m.is_lead ? 'fa-solid fa-crown text-amber-500' : 'fa-solid fa-user text-blue-300'"
+                                            :title="m.is_lead ? 'หัวหน้ากลุ่ม' : 'สมาชิก'"></i>
+                                        <span class="font-semibold truncate text-blue-900">{{ m.name }}</span>
+                                        <span v-if="m.is_me" class="shrink-0 text-[9px] font-bold px-1.5 rounded bg-blue-600 text-white">คุณ</span>
+                                        <span class="truncate">{{ m.email }}</span>
+                                    </li>
+                                </ul>
                             </div>
 
                             <!-- Join link สำหรับ leader ที่ลืม copy -->
@@ -205,6 +234,25 @@ const copyLink = (url) => {
                                 <div v-if="!b.is_leader">
                                     <i class="fa-solid fa-user-tie mr-1.5 text-slate-300"></i>หัวหน้ากลุ่ม: {{ b.lead_name ?? '—' }}
                                 </div>
+                            </div>
+
+                            <!-- ผู้เข้าร่วม (พับไว้ กดดู) -->
+                            <div v-if="isGroup(b) && b.members?.length" class="mt-2">
+                                <button @click="toggleMembers(b.id)"
+                                    class="text-[11px] font-semibold text-slate-500 hover:text-slate-700">
+                                    <i class="mr-1 fa-solid" :class="openMembers.has(b.id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                    ผู้เข้าร่วม {{ b.member_count }} คน
+                                </button>
+                                <ul v-if="openMembers.has(b.id)" class="mt-1.5 space-y-1">
+                                    <li v-for="(m, i) in b.members" :key="i" class="flex items-center gap-2 text-[11px] min-w-0">
+                                        <i class="w-3 text-center shrink-0"
+                                            :class="m.is_lead ? 'fa-solid fa-crown text-amber-500' : 'fa-solid fa-user text-slate-300'"
+                                            :title="m.is_lead ? 'หัวหน้ากลุ่ม' : 'สมาชิก'"></i>
+                                        <span class="font-medium truncate text-slate-600">{{ m.name }}</span>
+                                        <span v-if="m.is_me" class="shrink-0 text-[9px] font-bold px-1.5 rounded bg-blue-100 text-blue-700">คุณ</span>
+                                        <span class="truncate text-slate-400">{{ m.email }}</span>
+                                    </li>
+                                </ul>
                             </div>
                         </div>
                     </div>
