@@ -699,6 +699,12 @@ const hideToast = () => {
                     <i class="fa-brands fa-google"></i>
                     <span>{{ t("login") }}</span>
                 </a>
+                <!-- การจองของฉัน (จอเล็ก เฉพาะตอน login แล้ว) — อยู่นอก hamburger เหมือนปุ่มเข้าสู่ระบบ -->
+                <a v-else :href="`${appBase}/my-bookings`"
+                    class="bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-all md:hidden">
+                    <i class="fa-solid fa-calendar-check"></i>
+                    <span>การจองของฉัน</span>
+                </a>
 
                 <!-- ปุ่มแฮมเบอร์เกอร์ (จอเล็ก) -->
                 <button
@@ -1912,10 +1918,17 @@ const hideToast = () => {
                         </div>
                     </div>
 
-                    <p class="text-[11px] text-slate-400 text-center">
-                        <i class="mr-1 fa-solid fa-clock"></i>
-                        ลิงก์มีอายุ 15 นาที — หากครบกำหนดแล้วยังไม่ครบกลุ่ม ระบบจะยกเลิกอัตโนมัติ
-                    </p>
+                    <!-- ข้อควรรู้ของการจองกลุ่ม — การ์ดเดียว ชิดซ้าย ทุกบรรทัดหน้าตาเดียวกัน -->
+                    <ul class="px-3 py-2.5 space-y-1.5 text-[11px] text-slate-600 border rounded-lg bg-slate-50 border-slate-200">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-clock w-3.5 mt-0.5 text-center text-slate-400 shrink-0"></i>
+                            <span>ลิงก์มีอายุ 15 นาที — หากครบกำหนดแล้วยังไม่ครบกลุ่ม ระบบจะยกเลิกอัตโนมัติ</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-id-card w-3.5 mt-0.5 text-center text-slate-400 shrink-0"></i>
+                            <span>กรุณาแสดงบัตรและติดต่อเจ้าหน้าที่พร้อมผู้มีรายชื่อตามการจองก่อนเข้าใช้บริการทุกครั้ง</span>
+                        </li>
+                    </ul>
 
                     <button
                         @click="closeModal('joinShare')"

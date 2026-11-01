@@ -239,13 +239,19 @@ onMounted(async () => {
             <template v-else>
                 <!-- location tabs (ซ้าย) + legend สถานะห้อง (ขวา) -->
                 <div class="flex flex-wrap items-center gap-3">
-                    <div v-if="locations.length > 1" class="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+                    <!-- แถบเลือกอาคาร: ใหญ่ขึ้น + อาคารที่เลือกพื้นเหลือง ให้เห็นชัดว่ากำลังดูอาคารไหน -->
+                    <div v-if="locations.length > 1" class="flex flex-wrap gap-1.5 p-1.5 bg-slate-100 rounded-2xl w-fit">
                         <button
                             v-for="loc in locations" :key="loc.id"
                             @click="activeLoc = loc"
-                            :class="activeLoc?.id === loc.id ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
-                            class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all"
-                        >{{ loc.title }}</button>
+                            :class="activeLoc?.id === loc.id
+                                ? 'bg-amber-400 text-slate-900 shadow-md'
+                                : 'text-slate-500 hover:text-slate-800 hover:bg-white/70'"
+                            class="flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl transition-all"
+                        >
+                            <i class="fa-solid fa-building" :class="activeLoc?.id === loc.id ? 'text-slate-900' : 'text-slate-400'"></i>
+                            {{ loc.title }}
+                        </button>
                     </div>
 
                     <div class="flex items-center flex-wrap gap-3 text-[11px] text-slate-400 ml-auto">
