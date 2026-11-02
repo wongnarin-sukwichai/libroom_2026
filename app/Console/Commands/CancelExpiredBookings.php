@@ -90,7 +90,7 @@ class CancelExpiredBookings extends Command
                         'status'        => 'cancelled',
                         'cancelled_at'  => Carbon::now(),
                         'cancelled_by'  => 'ระบบ',
-                        'cancel_reason' => 'เจ้าหน้าที่ไม่ยืนยันภายใน 15 นาทีหลังเวลาเริ่มใช้งาน',
+                        'cancel_reason' => 'ไม่มายืนยันภายใน 15 นาทีหลังเวลาเริ่มใช้งาน',
                     ]);
                     $g->bookings()->update(['status' => 'cancelled']);
                     $cancelledCount++;
