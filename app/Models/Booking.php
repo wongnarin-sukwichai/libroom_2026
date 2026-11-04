@@ -8,7 +8,7 @@ class Booking extends Model
 {
     protected $table = 'bookings';
 
-    protected $fillable = ['group_id', 'user_id', 'status'];
+    protected $fillable = ['group_id', 'user_id', 'status', 'checkin_at'];
 
     public function group()
     {

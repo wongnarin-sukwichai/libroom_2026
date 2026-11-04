@@ -74,6 +74,7 @@ class BookingController extends Controller
                 'room.zone'          => fn($q) => $q->select('id', 'loc_id', 'title', 'min_capacity'),
                 'room.zone.location' => fn($q) => $q->select('id', 'title'),
                 'lead'               => fn($q) => $q->select('id', 'name'),
+                'admin'              => fn($q) => $q->select('id', 'name'),
                 'bookings'           => fn($q) => $q->select('id', 'group_id', 'user_id', 'status')->where('status', '!=', 'cancelled'),
                 'bookings.member'    => fn($q) => $q->select('id', 'name', 'email'),
             ])
@@ -107,12 +108,18 @@ class BookingController extends Controller
                     'min_capacity' => $g->room?->zone?->min_capacity ?? 1,
                     'is_leader'    => $isLeader,
                     'lead_name'    => $g->lead?->name,
-                    'join_url'     => $isLeader && $g->status === 'pending' && $g->room?->confirm_type === 'manual'
+                    'join_url'     => $isLeader && $g->status === 'pending' && $g->room?->confirm_type === 'manual' && ! $g->isWalkin()
                                       ? route('booking.join', $g->join_token)
                                       : null,
                     'can_cancel'   => $isLeader
                                       && in_array($g->status, ['pending', 'waiting_confirm'])
-                                      && $g->date->gte(Carbon::today()),
+                                      && $g->date->gte(Carbon::today())
+                                      && ! $g->isWalkin(),
+                    // เจ้าหน้าที่จองแทน — รอหัวหน้ากลุ่มยืนยัน (การ์ดเด่นในหน้านี้)
+                    'walkin_pending'    => $g->isWalkin() && $g->status === 'pending' && Carbon::now()->lt($g->token_expires_at),
+                    'walkin_url'        => $isLeader && $g->isWalkin() && $g->status === 'pending' ? route('walkin.show', $g->join_token) : null,
+                    'walkin_expires_at' => $g->isWalkin() ? $g->token_expires_at?->toIso8601String() : null,
+                    'by_staff_name'     => $g->isWalkin() ? $g->admin?->name : null,
                 ];
             });
 
@@ -317,7 +324,7 @@ class BookingController extends Controller
             return inertia('Join', ['error' => 'ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว']);
         }
 
-        if ($group->status !== 'pending') {
+        if ($group->status !== 'pending' || $group->isWalkin()) {
             return inertia('Join', ['error' => 'การจองนี้ไม่อยู่ในสถานะรับสมาชิกแล้ว']);
         }
 
@@ -369,7 +376,8 @@ class BookingController extends Controller
             return response()->json(['message' => 'ลิงก์ไม่ถูกต้อง'], 404);
         }
 
-        if ($group->status !== 'pending') {
+        // walk-in (เจ้าหน้าที่จองแทน) ใช้ token เดียวกัน แต่ห้าม join เพิ่ม — ยืนยันผ่าน /walkin/{token} เท่านั้น
+        if ($group->status !== 'pending' || $group->isWalkin()) {
             return response()->json(['message' => 'การจองนี้ไม่อยู่ในสถานะรับสมาชิกแล้ว'], 422);
         }
 
@@ -452,5 +460,109 @@ class BookingController extends Controller
             };
             return response()->json(['message' => $msg], 422);
         }
+    }
+
+    // ─── เจ้าหน้าที่จองแทน (walk-in) — หัวหน้ากลุ่มยืนยันเอง ภายใน 10 นาที ──────────
+    // สร้างที่ AdminBookingController@walkinStore (pending) / หมดเวลา → cron cancelExpiredPending ยกเลิกเอง
+
+    private function findWalkin(string $token): ?BookingGroup
+    {
+        $g = BookingGroup::with(['room.zone.location', 'lead', 'admin', 'bookings.member'])
+            ->where('join_token', $token)->first();
+
+        return $g && $g->isWalkin() ? $g : null;
+    }
+
+    // GET /walkin/{token} — หน้ายืนยัน (สแกน QR บนจอเจ้าหน้าที่ / ลิงก์ในการจองของฉัน)
+    public function walkinShow(string $token)
+    {
+        $g = $this->findWalkin($token);
+        if (! $g) {
+            return inertia('WalkinConfirm', ['error' => 'ไม่พบรายการ หรือลิงก์ไม่ถูกต้อง']);
+        }
+
+        $me      = Auth::user();
+        $expired = $g->status === 'pending' && Carbon::now()->gte($g->token_expires_at);
+
+        return inertia('WalkinConfirm', [
+            'token' => $token,
+            'group' => [
+                'status'     => $expired ? 'expired' : $g->status,
+                'room_title' => $g->room?->title,
+                'zone_title' => $g->room?->zone?->title,
+                'loc_title'  => $g->room?->zone?->location?->title,
+                'date'       => $g->date->format('Y-m-d'),
+                'time_label' => sprintf('%02d:00 – %02d:00 น.', $g->time_id, $g->time_id + 1),
+                'end_hour'   => $g->time_id + 1,
+                'staff_name' => $g->admin?->name,
+                'lead_name'  => $g->lead?->name,
+                'expires_at' => $g->token_expires_at?->toIso8601String(),
+                'members'    => $g->bookings->reject(fn($b) => $b->status === 'cancelled')
+                    ->sortByDesc(fn($b) => $b->user_id === $g->lead_user_id)
+                    ->map(fn($b) => [
+                        'name'    => $b->member?->name ?? '—',
+                        'email'   => $b->member?->email,
+                        'is_lead' => $b->user_id === $g->lead_user_id,
+                        'is_me'   => $b->user_id === $me->id,
+                    ])->values(),
+            ],
+            'is_leader' => $g->lead_user_id === $me->id,
+        ]);
+    }
+
+    /** ตรวจร่วมของ accept/decline — คืน [group, error-response|null] */
+    private function walkinGuard(string $token): array
+    {
+        $g = $this->findWalkin($token);
+        if (! $g) {
+            return [null, response()->json(['message' => 'ไม่พบรายการ'], 404)];
+        }
+        if ($g->lead_user_id !== Auth::id()) {
+            return [null, response()->json(['message' => 'เฉพาะหัวหน้ากลุ่มเท่านั้นที่ยืนยันได้'], 403)];
+        }
+        if ($g->status !== 'pending') {
+            return [null, response()->json(['message' => 'รายการนี้ไม่ได้รอการยืนยันแล้ว'], 422)];
+        }
+        if (Carbon::now()->gte($g->token_expires_at)) {
+            return [null, response()->json(['message' => 'หมดเวลายืนยันแล้ว (10 นาที) — กรุณาติดต่อเจ้าหน้าที่'], 422)];
+        }
+        return [$g, null];
+    }
+
+    // POST /walkin/{token}/accept — ยืนยัน → confirmed + เช็คอินทุกคน (ยืนอยู่ที่เคาน์เตอร์แล้ว)
+    public function walkinAccept(string $token)
+    {
+        [$g, $err] = $this->walkinGuard($token);
+        if ($err) return $err;
+
+        DB::transaction(function () use ($g) {
+            $g->update(['status' => 'confirmed']);
+            $g->bookings()->where('status', 'pending')->update([
+                'status'     => 'checked_in',
+                'checkin_at' => Carbon::now('Asia/Bangkok'),
+            ]);
+        });
+
+        return response()->json(['message' => 'ยืนยันแล้ว — เข้าใช้ห้องได้ทันที']);
+    }
+
+    // POST /walkin/{token}/decline — "ไม่ใช่ฉัน / ปฏิเสธ" → ยกเลิกทันที คืนห้อง+โควตา
+    public function walkinDecline(string $token)
+    {
+        [$g, $err] = $this->walkinGuard($token);
+        if ($err) return $err;
+
+        $name = Auth::user()->name;
+        DB::transaction(function () use ($g, $name) {
+            $g->update([
+                'status'        => 'cancelled',
+                'cancelled_at'  => Carbon::now(),
+                'cancelled_by'  => "สมาชิก ({$name})",
+                'cancel_reason' => 'หัวหน้ากลุ่มปฏิเสธการจองที่เจ้าหน้าที่สร้างแทน',
+            ]);
+            $g->bookings()->update(['status' => 'cancelled']);
+        });
+
+        return response()->json(['message' => 'ปฏิเสธแล้ว — ยกเลิกการจองนี้และคืนโควตาเรียบร้อย']);
     }
 }

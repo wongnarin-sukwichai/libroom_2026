@@ -28,6 +28,9 @@ interface BookingRow {
     members: { name: string; email: string | null; is_lead: boolean; status: string }[];
     member_count: number;
     min_capacity: number;
+    walkin?: boolean;          // เจ้าหน้าที่จองแทนนิสิต
+    admin_name?: string | null;
+    expires_at?: string | null;
 }
 
 interface Paginated {
@@ -38,6 +41,7 @@ interface Paginated {
     from: number;
     to: number;
     pending_count: number;
+    checkin_count?: number;
 }
 
 const emit = defineEmits<{ "pending-count": [n: number] }>();
@@ -55,11 +59,17 @@ const loading = ref(false);
 
 const tabs = [
     { key: "pending", label: "รอดำเนินการ", icon: "fa-clock" },
+    { key: "checkin", label: "รอเช็คอินหน้าประตู", icon: "fa-door-closed" },
     { key: "confirmed", label: "ยืนยันแล้ว", icon: "fa-circle-check" },
     { key: "cancelled", label: "ยกเลิก / ปฏิเสธ", icon: "fa-ban" },
     { key: "upcoming", label: "จองล่วงหน้า", icon: "fa-calendar-plus" },
 ];
-type TabKey = "pending" | "upcoming" | "confirmed" | "cancelled";
+type TabKey = "pending" | "checkin" | "upcoming" | "confirmed" | "cancelled";
+
+// รอเช็คอินหน้าประตู: ต้องแตะบัตรภายใน 15 นาทีหลังเริ่ม ไม่งั้นระบบ (cron) ยกเลิก
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const doorDeadline = (row: BookingRow) => `${pad2(row.start_hour)}:15`;
+const doorNotStarted = (row: BookingRow) => row.date === todayStr() && new Date().getHours() < row.start_hour;
 const activeTab = ref<TabKey>("pending");
 
 const viewMode = ref<"list" | "board">("list");
@@ -125,14 +135,22 @@ const memberStatusLabel: Record<string, string> = {
 };
 
 const canAct = (row: BookingRow) =>
-    row.confirm_type === "manual" &&
-    (row.status === "pending" || row.status === "waiting_confirm");
+    (row.walkin && row.status === "pending") ||   // จองแทนที่รอนิสิตยืนยัน — ปฏิเสธได้ (กดผิด) ไม่ว่าห้องประเภทไหน
+    (row.confirm_type === "manual" &&
+    (row.status === "pending" || row.status === "waiting_confirm"));
 // อนุมัติได้เฉพาะเมื่อสมาชิกครบแล้ว (waiting_confirm) — รอสมาชิกครบ (pending) ปฏิเสธได้อย่างเดียว
 const canApprove = (row: BookingRow) => row.confirm_type === "manual" && row.status === "waiting_confirm";
+const hhmm = (iso?: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 
 // เช็คอินโดยเจ้าหน้าที่ — ยืนยันแล้ว, ยังไม่เช็คอิน, วันนี้
 // รวมห้องมี kiosk ด้วย (นิสิตมาเคาน์เตอร์แทนการสแกน — ตามข้อความในการ์ดจองหน้าแรก)
+// ปุ่มเช็คอินอยู่แท็บ "รอเช็คอินหน้าประตู" เท่านั้น — แท็บ "ยืนยันแล้ว" = กระบวนการเสร็จแล้ว ไม่มีอะไรต้องกด
 const canCheckin = (row: BookingRow) =>
+    activeTab.value === "checkin" &&
     row.status === "confirmed" &&
     !row.checked_in &&
     row.date === todayStr();
@@ -417,6 +435,12 @@ onMounted(() => fetch());
                 >
                     {{ paginated.pending_count }}
                 </span>
+                <span
+                    v-if="tab.key === 'checkin' && (paginated.checkin_count ?? 0) > 0"
+                    class="ml-0.5 bg-indigo-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
+                >
+                    {{ paginated.checkin_count }}
+                </span>
             </button>
         </div>
 
@@ -440,6 +464,11 @@ onMounted(() => fetch());
                             {{
                                 filterDate ? fmtDate(filterDate) : "ทั้งหมด"
                             }}</template
+                        >
+                        <template v-else-if="activeTab === 'checkin'"
+                            >ยืนยันแล้ว แต่ยังไม่มีใครเช็คอิน — รอนิสิตแตะบัตร/สแกน QR หรือเจ้าหน้าที่กดเช็คอินแทน
+                            (ห้องมี kiosk ต้องแตะภายใน 15 นาทีหลังเวลาเริ่ม ไม่งั้นระบบยกเลิก) · วันที่
+                            {{ filterDate ? fmtDate(filterDate) : fmtDate(todayStr()) }}</template
                         >
                         <template v-else-if="activeTab === 'confirmed'"
                             >รายการที่ยืนยันแล้ว</template
@@ -494,6 +523,10 @@ onMounted(() => fetch());
                                     <div class="text-[10px] text-slate-400">
                                         {{ row.member_email }}
                                     </div>
+                                    <span v-if="row.walkin"
+                                        class="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-purple-100 text-purple-700 border-purple-200">
+                                        <i class="fa-solid fa-user-shield"></i>เจ้าหน้าที่จองแทน{{ row.admin_name ? ' · ' + row.admin_name : '' }}
+                                    </span>
                                     <!-- ผู้เข้าร่วม (การจองแบบกลุ่ม) -->
                                     <div v-if="isGroup(row)" class="mt-1.5">
                                         <button
@@ -559,7 +592,32 @@ onMounted(() => fetch());
                                     </div>
                                 </td>
                                 <td class="p-4 text-center">
+                                    <!-- แท็บรอเช็คอินหน้าประตู: บอกเส้นตายแตะบัตรแทนป้ายสถานะ -->
+                                    <template v-if="activeTab === 'checkin'">
+                                        <!-- แสดงเฉพาะรอบที่ยังเช็คอินทัน (backend กรองแล้ว: kiosk เลย HH:15 / ห้องอื่นหมดเวลาที่จอง) -->
+                                        <span
+                                            class="text-[10px] font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border-indigo-200"
+                                        >
+                                            <i class="fa-solid" :class="row.access_control === '1' ? 'fa-door-closed' : 'fa-qrcode'"></i>
+                                            {{ row.access_control === '1' ? 'รอแตะบัตร' : 'รอเช็คอิน' }}
+                                        </span>
+                                        <div class="text-[10px] mt-1.5 text-slate-400">
+                                            <template v-if="row.access_control === '1'">
+                                                <template v-if="doorNotStarted(row)">เริ่ม {{ pad2(row.start_hour) }}:00 · แตะได้ถึง {{ doorDeadline(row) }} น.</template>
+                                                <template v-else>ต้องแตะภายใน {{ doorDeadline(row) }} น.</template>
+                                            </template>
+                                            <template v-else>สแกน QR หรือกดเช็คอิน · ใช้ได้ถึง {{ pad2(row.end_hour) }}:00 น.</template>
+                                        </div>
+                                    </template>
+                                    <!-- เจ้าหน้าที่จองแทน — รอหัวหน้ากลุ่มกดยืนยันในมือถือ -->
+                                    <template v-else-if="row.walkin && row.status === 'pending'">
+                                        <span class="text-[10px] font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1 bg-violet-50 text-violet-700 border-violet-200">
+                                            <i class="fa-solid fa-hourglass-half"></i> รอนิสิตยืนยัน
+                                        </span>
+                                        <div class="text-[10px] mt-1.5 text-slate-400">ภายใน {{ hhmm(row.expires_at) }} น.</div>
+                                    </template>
                                     <span
+                                        v-else
                                         :class="statusConfig[row.status]?.cls"
                                         class="text-[10px] font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1"
                                     >
@@ -610,7 +668,7 @@ onMounted(() => fetch());
                                             เช็คอิน
                                         </button>
                                         <span
-                                            v-else-if="row.checked_in"
+                                            v-else-if="activeTab === 'confirmed'"
                                             class="text-[10px] font-bold text-emerald-600 inline-flex items-center gap-1"
                                         >
                                             <i class="fa-solid fa-circle-check"></i>

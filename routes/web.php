@@ -94,6 +94,8 @@ Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/bookings/checkin', [AdminBookingController::class, 'checkinSession']);
     Route::post('/admin/bookings/cancel',  [AdminBookingController::class, 'cancelSession']);
     Route::post('/admin/bookings/end-early', [AdminBookingController::class, 'endEarly']);
+    Route::get('/admin/bookings/walkin-lookup', [AdminBookingController::class, 'walkinLookup']);
+    Route::post('/admin/bookings/walkin', [AdminBookingController::class, 'walkinStore']);
 
     Route::get('/admin/stats/usage', [AdminStatsController::class, 'usage']);
 
@@ -151,6 +153,11 @@ Route::get('/my-bookings', [BookingController::class, 'myBookings'])->middleware
 Route::post('/booking-groups/{group}/cancel', [BookingController::class, 'cancel'])->middleware('auth')->name('booking.cancel');
 Route::get('/join/{token}', [BookingController::class, 'joinPage'])->middleware('auth')->name('booking.join');
 Route::post('/join/{token}', [BookingController::class, 'join'])->middleware('auth')->name('booking.join.submit');
+
+// เจ้าหน้าที่จองแทน (walk-in) — หัวหน้ากลุ่มยืนยัน/ปฏิเสธเองภายใน 10 นาที
+Route::get('/walkin/{token}', [BookingController::class, 'walkinShow'])->middleware('auth')->name('walkin.show');
+Route::post('/walkin/{token}/accept', [BookingController::class, 'walkinAccept'])->middleware('auth')->name('walkin.accept');
+Route::post('/walkin/{token}/decline', [BookingController::class, 'walkinDecline'])->middleware('auth')->name('walkin.decline');
 
 Route::get('/api/locations', [LocationController::class, 'forBooking'])->middleware('auth:admin');
 

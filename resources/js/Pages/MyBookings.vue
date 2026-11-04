@@ -5,6 +5,12 @@ import Swal from 'sweetalert2';
 
 const props = defineProps({ bookings: Array });
 
+const hhmm = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
 // แสดงรายชื่อผู้เข้าร่วมเฉพาะการจองแบบกลุ่ม (ต้องมีสมาชิกขั้นต่ำ >1 หรือมีคน join แล้ว)
 const isGroup = (b) => (b.min_capacity ?? 1) > 1 || (b.members?.length ?? 0) > 1;
 // ประวัติ: พับรายชื่อไว้ กดดูทีละรายการ
@@ -138,7 +144,11 @@ const copyLink = (url) => {
                         <div class="flex-1 min-w-0">
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="text-sm font-bold text-slate-900">{{ b.room_title }}</span>
-                                <span :class="statusConfig[b.status]?.color"
+                                <span v-if="b.walkin_pending"
+                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200">
+                                    {{ b.is_leader ? 'รอคุณยืนยัน' : 'รอหัวหน้ากลุ่มยืนยัน' }}
+                                </span>
+                                <span v-else :class="statusConfig[b.status]?.color"
                                     class="text-[10px] font-semibold px-2 py-0.5 rounded-full border">
                                     {{ statusConfig[b.status]?.label }}
                                 </span>
@@ -146,7 +156,22 @@ const copyLink = (url) => {
                                     class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-indigo-100 text-indigo-700 border-indigo-200">
                                     <i class="fa-solid fa-user-group mr-0.5"></i>เข้าร่วม
                                 </span>
+                                <span v-if="b.by_staff_name"
+                                    class="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-purple-100 text-purple-700 border-purple-200">
+                                    <i class="fa-solid fa-user-shield mr-0.5"></i>เจ้าหน้าที่จองแทน · {{ b.by_staff_name }}
+                                </span>
                             </div>
+
+                            <!-- เจ้าหน้าที่จองแทน — หัวหน้ากลุ่มต้องกดยืนยันภายใน 10 นาที -->
+                            <a v-if="b.walkin_pending && b.walkin_url" :href="b.walkin_url"
+                                class="flex items-center gap-3 p-3 mt-2 transition-colors border-2 rounded-xl border-violet-300 bg-violet-50 hover:bg-violet-100">
+                                <i class="text-xl fa-solid fa-bell text-violet-600"></i>
+                                <div class="flex-1 min-w-0 text-[11px] text-violet-900">
+                                    <div class="text-xs font-bold">เจ้าหน้าที่สร้างการจองให้คุณ — กดเพื่อยืนยันหรือปฏิเสธ</div>
+                                    <div>ต้องยืนยันภายใน {{ hhmm(b.walkin_expires_at) }} น. ไม่อย่างนั้นระบบจะยกเลิกเอง</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right text-violet-400"></i>
+                            </a>
                             <div class="text-xs text-slate-500 mt-1 space-y-0.5">
                                 <div><i class="fa-solid fa-location-dot mr-1.5 text-slate-300"></i>{{ b.loc_title }} › {{ b.zone_title }}</div>
                                 <div><i class="fa-solid fa-calendar mr-1.5 text-slate-300"></i>{{ formatDate(b.date) }}</div>

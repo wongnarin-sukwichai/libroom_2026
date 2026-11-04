@@ -154,7 +154,8 @@ settings   (key–value config ทั้งระบบ)
 | GET | `/my-bookings` | ประวัติการจองของ member — การจองแบบกลุ่มแสดง `members` (ชื่อ+อีเมล, หัวหน้ากลุ่มก่อน, ไม่นับที่ยกเลิก) เห็นเฉพาะคนในกลุ่ม |
 | POST | `/booking-groups/{group}/cancel` | ยกเลิกการจอง |
 | GET | `/join/{token}` | หน้า join session |
-| POST | `/join/{token}` | เข้าร่วม session |
+| POST | `/join/{token}` | เข้าร่วม session (ปฏิเสธ walk-in) |
+| GET/POST | `/walkin/{token}` / `accept` / `decline` | หัวหน้ากลุ่มยืนยัน (→ confirmed + checked_in ทุกคน) หรือปฏิเสธ (→ cancelled) การจองที่เจ้าหน้าที่สร้างแทน — `BookingGroup::isWalkin()` = source staff + มี lead |
 | GET | `/auth/google` | Google OAuth redirect |
 | POST | `/logout` | Logout |
 | GET | `/s/{code}` | สแกน QR ที่ตัว unit → จอง/เช็คอิน (auth เช็คใน controller) |
@@ -169,7 +170,7 @@ settings   (key–value config ทั้งระบบ)
 | GET | `/dashboard` | Admin dashboard (SPA) |
 | GET | `/admin/overview-stats` | สถิติภาพรวม |
 | GET | `/admin/overview-service` (+ `/api/overview-service`) | การ์ด "สถิติการเข้าใช้บริการรายพื้นที่" — จาก `UsageStats` ของระบบนี้ (เลิก proxy ระบบเก่าแล้ว 2026-10-27; คงคีย์ `arec/dlp/space` ไว้ให้ผู้เรียกภายนอกเดิม) |
-| GET | `/admin/bookings` | รายการ booking ทั้งหมด — `waiting_confirm` ขึ้นบนสุดเสมอ; แต่ละรอบมี `members` / `member_count` / `min_capacity` (คอลัมน์สมาชิกกดกางรายชื่อ) |
+| GET | `/admin/bookings` | รายการ booking ทั้งหมด — แท็บแบ่งตามขั้นตอนถัดไป: `pending`=ต้องติดต่อเจ้าหน้าที่ / `checkin`=**รอเช็คอินหน้าประตู** (วันนี้ ทุกห้อง confirmed ที่ยังไม่มีใครเช็คอิน; ห้อง kiosk ซ่อนเมื่อเลย HH:15 ของชั่วโมงแรก, ห้องอื่นซ่อนเมื่อหมดเวลาที่จอง; ไม่รวมจองของเจ้าหน้าที่; เรียงตามเวลาเริ่ม; ปุ่มเช็คอินมีเฉพาะแท็บนี้) / `confirmed`=กระบวนการเสร็จ (มีคนเช็คอินแล้ว หรือจองโดยเจ้าหน้าที่); ส่ง `checkin_count` ไว้แสดงบนแท็บ); `waiting_confirm` ขึ้นบนสุดเสมอ; แต่ละรอบมี `members` / `member_count` / `min_capacity` (คอลัมน์สมาชิกกดกางรายชื่อ) |
 | GET | `/admin/bookings/room-day?room_id=&date=` | ผังห้อง: ช่องเวลา + รายชื่อผู้จองต่อช่อง (session ข้ามชั่วโมงโชว์ทุกช่อง + `is_continuation`) |
 | GET | `/admin/bookings/board-summary?date=` | ผังห้อง: จำนวน `waiting` (รอเจ้าหน้าที่อนุมัติ, ส้มกะพริบ) / `pending` (รอสมาชิกครบ, เทา) / `booked` ต่อห้อง |
 | POST | `/admin/bookings/approve` | Approve session (→ confirmed, ไม่เช็คอิน) |
@@ -178,6 +179,7 @@ settings   (key–value config ทั้งระบบ)
 | POST | `/admin/bookings/cancel` | ยกเลิก session ที่ยืนยันแล้ว (confirmed → cancelled) — UI แสดงเฉพาะรอบที่**ยังไม่เริ่ม** |
 | POST | `/admin/bookings/end-early` | **เลิกใช้ก่อนเวลา** (admin+staff): รอบที่เริ่มแล้ววันนี้ → ยกเลิกเฉพาะชั่วโมงที่ยังไม่เริ่ม (`time_id > ชั่วโมงปัจจุบัน`), ชั่วโมงที่ใช้แล้ว/ปัจจุบันเก็บไว้ (ประวัติเช็คอิน+สถิติ+โควตาที่ใช้จริง); `cancel_reason` = "เลิกใช้ก่อนเวลา — …" — UI logic อยู่ที่ `Components/Admin/endEarly.ts` |
 | POST | `/admin/bookings/staff` | Staff สร้าง booking แทน |
+| GET/POST | `/admin/bookings/walkin-lookup?room_id=&q=` / `/admin/bookings/walkin` | **เจ้าหน้าที่จองแทนนิสิต (walk-in)** — ผังห้อง กดช่องว่างของชั่วโมงปัจจุบัน → ค้นหาอีเมล (ตรวจโควตา/ชนเวลา/block รายคน) ครบขั้นต่ำ ≤ ความจุ → group `pending` + `source=staff` + lead + `token_expires_at=+10 นาที` → คืน QR (`/walkin/{token}`) ให้หัวหน้ากลุ่มสแกน; ไม่ยืนยันใน 10 นาที → cron `cancelExpiredPending` ตัวเดิมยกเลิก (ไม่แก้ cron) |
 | POST | `/admin/rooms/{room}/toggle-access` | เปิด/ปิด access control ของห้อง |
 | PUT | `/admin/zones/{zone}/tools` | ตั้งชุดอุปกรณ์มาตรฐานของ zone |
 | PUT | `/admin/rooms/{room}/tools` | ตั้ง override อุปกรณ์เฉพาะห้อง (add/remove) |

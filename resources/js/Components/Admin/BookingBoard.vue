@@ -20,13 +20,20 @@ interface SlotGroup {
     lead_name: string;
     lead_email: string | null;
     by_staff: boolean;
+    walkin?: boolean;          // เจ้าหน้าที่จองแทนนิสิต
+    admin_name?: string | null;
+    expires_at?: string | null;
     occupants: Occupant[];
     checked_in: boolean;
     is_continuation: boolean;
 }
 interface DaySlot { hour: number; label: string; groups: SlotGroup[] }
 interface DayData {
-    room: { id: number; title: string; zone_title: string; loc_title: string; confirm_type: "auto" | "manual"; access_control: "0" | "1" };
+    room: {
+        id: number; title: string; zone_title: string; loc_title: string;
+        confirm_type: "auto" | "manual"; access_control: "0" | "1";
+        is_open: boolean; min_capacity: number; max_capacity: number | null;
+    };
     date: string;
     is_weekend: boolean;
     slots: DaySlot[];
@@ -67,6 +74,99 @@ const sourceConfig: Record<string, { label: string; cls: string }> = {
     qr:    { label: "QR",         cls: "bg-indigo-100 text-indigo-600 border-indigo-200" },
     // ม่วง — ไม่ใช้อำพัน เพราะอำพันสงวนไว้ให้ "รอเจ้าหน้าที่อนุมัติ"
     staff: { label: "เจ้าหน้าที่", cls: "bg-purple-100 text-purple-700 border-purple-200" },
+};
+// ป้ายที่มา/สถานะของการจองแทนนิสิต (walk-in) แยกจาก "เจ้าหน้าที่จองล่วงหน้า"
+const sourceOf = (g: SlotGroup) => g.walkin
+    ? { label: `เจ้าหน้าที่จองแทน${g.admin_name ? " · " + g.admin_name : ""}`, cls: sourceConfig.staff.cls }
+    : (sourceConfig[g.source] ?? sourceConfig.web);
+const WALKIN_WAIT = { label: "รอนิสิตยืนยัน", cls: "bg-violet-50 text-violet-700 border-violet-200", dot: "bg-violet-500" };
+const statusOf = (g: SlotGroup) => (g.walkin && g.status === "pending") ? WALKIN_WAIT : (statusConfig[g.status] ?? { label: g.status, cls: "", dot: "" });
+
+// ─── จองแทนนิสิต (walk-in) — เฉพาะช่องว่างของชั่วโมงปัจจุบัน วันนี้ ห้องเปิด ─────────
+interface WMember { id: number; name: string; email: string; problem: string | null }
+const nowHour = ref(new Date().getHours());
+const canWalkin = (slot: DaySlot) =>
+    isToday.value && slot.hour === nowHour.value && !slot.groups.length && !!day.value?.room.is_open;
+const minutesLeft = () => 60 - new Date().getMinutes();
+
+const wSlot      = ref<DaySlot | null>(null);
+const wQuery     = ref("");
+const wResults   = ref<WMember[]>([]);
+const wSearching = ref(false);
+const wMembers   = ref<WMember[]>([]);
+const wConsent   = ref(false);
+const wSaving    = ref(false);
+const wError     = ref("");
+const wDone      = ref<{ message: string; lead_name: string; qr_svg: string; url: string; expires_at: string } | null>(null);
+let wTimer: ReturnType<typeof setTimeout> | undefined;
+
+function openWalkin(slot: DaySlot) {
+    nowHour.value = new Date().getHours();
+    if (!canWalkin(slot)) return;
+    wSlot.value = slot; wQuery.value = ""; wResults.value = []; wMembers.value = [];
+    wConsent.value = false; wError.value = ""; wDone.value = null;
+}
+function closeWalkin() {
+    const created = !!wDone.value;
+    wSlot.value = null;
+    if (created) { fetchDay(); fetchSummary(); emit("changed"); }
+}
+// ช่องค้นหาพิมพ์แค่ส่วนหน้าอีเมล (มี "@msu.ac.th" ต่อท้ายให้) — วางอีเมลเต็มมาก็ตัดส่วนหลัง @ ทิ้งเอง
+const MSU_DOMAIN = "@msu.ac.th";
+function onWalkinQuery() {
+    const at = wQuery.value.indexOf("@");
+    if (at !== -1) wQuery.value = wQuery.value.slice(0, at);
+    wQuery.value = wQuery.value.replace(/\s+/g, "");
+    clearTimeout(wTimer);
+    wResults.value = [];
+    if (wQuery.value.trim().length < 3) return;
+    wTimer = setTimeout(async () => {
+        wSearching.value = true;
+        try {
+            const { data } = await axios.get("/admin/bookings/walkin-lookup", {
+                params: { room_id: day.value?.room.id, q: wQuery.value.trim() },
+            });
+            wResults.value = data;
+        } finally { wSearching.value = false; }
+    }, 350);
+}
+// Enter = เพิ่มคนที่อีเมลตรงพอดี (ส่วนหน้า + @msu.ac.th) หรือถ้ามีผลลัพธ์ที่ใช้ได้คนเดียว
+function onWalkinEnter() {
+    const full = (wQuery.value + MSU_DOMAIN).toLowerCase();
+    const exact = wResults.value.find(r => r.email.toLowerCase() === full);
+    const usable = wResults.value.filter(r => !r.problem && !wMembers.value.some(x => x.id === r.id));
+    const pick = exact ?? (usable.length === 1 ? usable[0] : null);
+    if (pick) addWalkinMember(pick);
+}
+function addWalkinMember(m: WMember) {
+    if (m.problem || wMembers.value.some(x => x.id === m.id)) return;
+    if (wMax.value && wMembers.value.length >= wMax.value) return;
+    wMembers.value.push(m);
+    wQuery.value = ""; wResults.value = [];
+}
+const removeWalkinMember = (i: number) => wMembers.value.splice(i, 1);
+const makeLead = (i: number) => { const [m] = wMembers.value.splice(i, 1); wMembers.value.unshift(m); };
+const wMin = computed(() => day.value?.room.min_capacity ?? 1);
+const wMax = computed(() => day.value?.room.max_capacity ?? null);
+const wReady = computed(() => wMembers.value.length >= wMin.value && wConsent.value && !wSaving.value);
+
+async function submitWalkin() {
+    if (!wReady.value || !day.value) return;
+    wSaving.value = true; wError.value = "";
+    try {
+        const { data } = await axios.post("/admin/bookings/walkin", {
+            room_id: day.value.room.id,
+            member_ids: wMembers.value.map(m => m.id),
+        });
+        wDone.value = data;
+    } catch (e: any) {
+        wError.value = e.response?.data?.message ?? "เกิดข้อผิดพลาด";
+    } finally { wSaving.value = false; }
+}
+const expiresLabel = (iso?: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 const occStatus = (s: string) => statusConfig[s] ?? { label: s, cls: "", dot: "bg-slate-300" };
 
@@ -144,6 +244,8 @@ function canApprove(g: SlotGroup) {
     return day.value?.room.confirm_type === "manual" && g.status === "waiting_confirm";
 }
 function canReject(g: SlotGroup) {
+    // จองแทนนิสิตที่รอยืนยัน — เจ้าหน้าที่ยกเลิกได้ (กดผิด) ไม่ว่าห้องประเภทไหน
+    if (g.walkin && g.status === "pending") return true;
     return day.value?.room.confirm_type === "manual" &&
         (g.status === "pending" || g.status === "waiting_confirm");
 }
@@ -318,24 +420,29 @@ onMounted(async () => {
                 <div class="divide-y divide-slate-50">
                     <button
                         v-for="slot in day.slots" :key="slot.hour"
-                        @click="slot.groups.length && (slotModal = slot)"
-                        :disabled="!slot.groups.length"
+                        @click="slot.groups.length ? (slotModal = slot) : openWalkin(slot)"
+                        :disabled="!slot.groups.length && !canWalkin(slot)"
                         class="flex items-start w-full gap-4 px-5 py-3 text-left transition-colors"
-                        :class="slot.groups.length ? 'hover:bg-slate-50 cursor-pointer' : 'cursor-default'"
+                        :class="slot.groups.length || canWalkin(slot) ? 'hover:bg-slate-50 cursor-pointer' : 'cursor-default'"
                     >
                         <div class="w-28 shrink-0 text-xs font-bold text-slate-700 pt-0.5">{{ slot.label }}</div>
                         <div class="flex-1 min-w-0">
-                            <div v-if="!slot.groups.length" class="text-[11px] text-slate-300">ว่าง</div>
+                            <!-- ช่องว่างของชั่วโมงปัจจุบัน = จองแทนนิสิตได้ -->
+                            <div v-if="!slot.groups.length && canWalkin(slot)"
+                                class="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-600">
+                                <i class="fa-solid fa-user-plus"></i> ว่าง · กดเพื่อจองแทนนิสิต (เหลือ {{ minutesLeft() }} นาที)
+                            </div>
+                            <div v-else-if="!slot.groups.length" class="text-[11px] text-slate-300">ว่าง</div>
                             <div v-else class="flex flex-wrap gap-1.5">
                                 <span
                                     v-for="(g, i) in slot.groups" :key="i"
                                     class="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border"
-                                    :class="statusConfig[g.status]?.cls ?? 'bg-slate-100 border-slate-200'"
+                                    :class="statusOf(g).cls || 'bg-slate-100 border-slate-200'"
                                 >
                                     <span class="font-bold truncate max-w-[140px]">{{ g.lead_name }}</span>
                                     <span class="opacity-60">·</span>
                                     <!-- ชื่อสถานะ (เหมือนป้ายในหน้ารายการ) -->
-                                    <span class="font-semibold">{{ statusConfig[g.status]?.label ?? g.status }}</span>
+                                    <span class="font-semibold">{{ statusOf(g).label }}</span>
                                     <span class="opacity-60">·</span>
                                     <span><i class="fa-solid fa-user-group text-[9px] mr-0.5"></i>{{ g.occupants.length }}</span>
                                     <span v-if="g.is_continuation" class="opacity-60">(ต่อเนื่อง)</span>
@@ -344,7 +451,7 @@ onMounted(async () => {
                                 </span>
                             </div>
                         </div>
-                        <i v-if="slot.groups.length" class="fa-solid fa-chevron-right text-[10px] text-slate-300 mt-1"></i>
+                        <i v-if="slot.groups.length || canWalkin(slot)" class="fa-solid fa-chevron-right text-[10px] text-slate-300 mt-1"></i>
                     </button>
                 </div>
             </div>
@@ -373,13 +480,17 @@ onMounted(async () => {
                                 <div v-if="g.lead_email" class="text-[10px] text-slate-400">{{ g.lead_email }}</div>
                             </div>
                             <div class="flex flex-wrap justify-end gap-1 shrink-0">
-                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full border" :class="sourceConfig[g.source]?.cls ?? sourceConfig.web.cls">
-                                    {{ sourceConfig[g.source]?.label ?? g.source }}
+                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full border" :class="sourceOf(g).cls">
+                                    {{ sourceOf(g).label }}
                                 </span>
-                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full border" :class="statusConfig[g.status]?.cls">
-                                    {{ statusConfig[g.status]?.label ?? g.status }}
+                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full border" :class="statusOf(g).cls">
+                                    {{ statusOf(g).label }}
                                 </span>
                             </div>
+                        </div>
+                        <div v-if="g.walkin && g.status === 'pending'" class="mt-1.5 text-[11px] text-violet-700">
+                            <i class="mr-1 fa-solid fa-hourglass-half"></i>รอ {{ g.lead_name }} กดยืนยันภายใน {{ expiresLabel(g.expires_at) }} น.
+                            — ไม่ยืนยัน ระบบยกเลิกเอง
                         </div>
 
                         <div class="text-[11px] text-slate-500 mt-1.5">
@@ -425,6 +536,107 @@ onMounted(async () => {
                                 <i class="fa-solid fa-circle-check"></i>เช็คอินครบแล้ว
                             </span>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ WALK-IN MODAL: เจ้าหน้าที่จองแทนนิสิต (ชั่วโมงปัจจุบัน) ══ -->
+        <div v-if="wSlot && day" class="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center bg-black/40 sm:p-4"
+            @click.self="closeWalkin">
+            <div class="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-xl max-h-[90vh] flex flex-col">
+                <div class="flex items-start justify-between gap-2 px-5 py-4 border-b border-slate-100">
+                    <div>
+                        <div class="text-sm font-bold text-slate-900"><i class="mr-1.5 fa-solid fa-user-plus text-indigo-500"></i>จองแทนนิสิต</div>
+                        <div class="text-[11px] text-slate-500 mt-0.5">
+                            {{ day.room.title }} · {{ wSlot.label }} <span class="font-semibold text-indigo-600">(เหลือ {{ minutesLeft() }} นาที)</span>
+                        </div>
+                    </div>
+                    <button @click="closeWalkin" class="text-slate-400 hover:text-slate-600"><i class="text-lg fa-solid fa-xmark"></i></button>
+                </div>
+
+                <!-- ผลลัพธ์: QR ให้หัวหน้ากลุ่มสแกนยืนยัน -->
+                <div v-if="wDone" class="p-5 space-y-3 overflow-y-auto text-center">
+                    <div class="text-xs font-bold text-emerald-700"><i class="mr-1 fa-solid fa-circle-check"></i>{{ wDone.message }}</div>
+                    <div class="text-sm font-bold text-slate-900">ให้ <span class="text-indigo-700">{{ wDone.lead_name }}</span> สแกน QR นี้ด้วยมือถือ แล้วกด "ยืนยัน"</div>
+                    <div class="flex justify-center p-3 bg-white border rounded-xl border-slate-200 w-fit mx-auto" v-html="wDone.qr_svg"></div>
+                    <div class="text-[11px] text-slate-500">
+                        หรือเปิดเมนู <b>การจองของฉัน</b> ในบัญชีของหัวหน้ากลุ่ม · ต้องยืนยันภายใน <b>{{ expiresLabel(wDone.expires_at) }} น.</b>
+                        ไม่อย่างนั้นระบบจะยกเลิกและคืนห้องเอง
+                    </div>
+                    <button @click="closeWalkin" class="px-5 py-2 text-xs font-bold text-white bg-blue-900 rounded-lg hover:bg-blue-800">ปิด</button>
+                </div>
+
+                <!-- ฟอร์ม -->
+                <div v-else class="p-5 space-y-4 overflow-y-auto">
+                    <div>
+                        <label class="block mb-1 text-xs font-bold text-slate-700">ค้นหาด้วยอีเมล — พิมพ์แค่ส่วนหน้า (อย่างน้อย 3 ตัวอักษร) แล้วกด Enter</label>
+                        <div class="flex items-stretch overflow-hidden border rounded-lg border-slate-300 focus-within:ring-2 focus-within:ring-indigo-200">
+                            <div class="relative flex-1">
+                                <input v-model="wQuery" @input="onWalkinQuery" @keydown.enter.prevent="onWalkinEnter"
+                                    type="text" inputmode="email" autocomplete="off" placeholder="เช่น 6501234"
+                                    class="w-full px-3 py-2 text-xs border-0 focus:outline-none focus:ring-0" />
+                                <i v-if="wSearching" class="absolute text-xs -translate-y-1/2 fa-solid fa-spinner fa-spin right-2 top-1/2 text-slate-400"></i>
+                            </div>
+                            <span class="flex items-center px-3 text-xs font-semibold border-l select-none bg-slate-100 text-slate-500 border-slate-300">@msu.ac.th</span>
+                        </div>
+                        <div v-if="wResults.length" class="mt-1 overflow-hidden border divide-y rounded-lg border-slate-200 divide-slate-100">
+                            <button v-for="r in wResults" :key="r.id" type="button" @click="addWalkinMember(r)"
+                                :disabled="!!r.problem || wMembers.some(x => x.id === r.id)"
+                                class="flex items-start w-full gap-2 px-3 py-2 text-left text-[11px] hover:bg-slate-50 disabled:cursor-not-allowed">
+                                <i class="mt-0.5 fa-solid" :class="r.problem ? 'fa-circle-xmark text-red-500' : 'fa-circle-plus text-emerald-600'"></i>
+                                <div class="min-w-0">
+                                    <div class="font-semibold truncate text-slate-800">{{ r.name }}</div>
+                                    <div class="truncate text-slate-400">{{ r.email }}</div>
+                                    <div v-if="r.problem" class="font-semibold text-red-600">{{ r.problem }}</div>
+                                    <div v-else-if="wMembers.some(x => x.id === r.id)" class="text-slate-400">เพิ่มแล้ว</div>
+                                </div>
+                            </button>
+                        </div>
+                        <div v-else-if="wQuery.trim().length >= 3 && !wSearching" class="mt-1 text-[11px] text-slate-400">
+                            ไม่พบอีเมลนี้ — นิสิตต้องเข้าสู่ระบบด้วยอีเมล @msu.ac.th อย่างน้อย 1 ครั้งก่อน
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-1 text-xs">
+                            <span class="font-bold text-slate-700">ผู้ใช้ห้อง</span>
+                            <span class="font-bold" :class="wMembers.length >= wMin ? 'text-emerald-600' : 'text-slate-500'">
+                                {{ wMembers.length }} / {{ wMin }} คน (ขั้นต่ำ){{ wMax ? ` · สูงสุด ${wMax}` : '' }}
+                            </span>
+                        </div>
+                        <ul v-if="wMembers.length" class="border divide-y rounded-lg border-slate-200 divide-slate-100">
+                            <li v-for="(m, i) in wMembers" :key="m.id" class="flex items-center gap-2 px-3 py-2 text-[11px]">
+                                <i class="w-3 text-center" :class="i === 0 ? 'fa-solid fa-crown text-amber-500' : 'fa-solid fa-user text-slate-300'"
+                                    :title="i === 0 ? 'หัวหน้ากลุ่ม (คนกดยืนยัน)' : 'สมาชิก'"></i>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold truncate text-slate-800">{{ m.name }}</div>
+                                    <div class="truncate text-slate-400">{{ m.email }}</div>
+                                </div>
+                                <button v-if="i > 0" @click="makeLead(i)" class="text-[10px] text-amber-600 hover:underline shrink-0">ตั้งเป็นหัวหน้า</button>
+                                <button @click="removeWalkinMember(i)" class="text-slate-400 hover:text-red-500 shrink-0"><i class="fa-solid fa-xmark"></i></button>
+                            </li>
+                        </ul>
+                        <div v-else class="text-[11px] text-slate-400">ยังไม่มีรายชื่อ — คนแรกที่เพิ่มคือหัวหน้ากลุ่ม (คนที่ต้องกดยืนยัน)</div>
+                    </div>
+
+                    <label class="flex items-start gap-2 p-3 text-[11px] border rounded-lg cursor-pointer bg-amber-50 border-amber-200 text-amber-900">
+                        <input v-model="wConsent" type="checkbox" class="mt-0.5 rounded border-amber-300 text-amber-600" />
+                        <span>แจ้งนิสิตแล้ว: ใช้ห้องได้ <b>{{ minutesLeft() }} นาที</b> (ถึง {{ String(wSlot.hour + 1).padStart(2, '0') }}:00 น.)
+                            แต่หักโควตา<b>คนละ 1 ชั่วโมง</b> และหัวหน้ากลุ่มต้องกดยืนยันในมือถือภายใน 10 นาที</span>
+                    </label>
+
+                    <div v-if="wError" class="px-3 py-2 text-xs text-red-600 border border-red-200 rounded-lg bg-red-50">
+                        <i class="mr-1 fa-solid fa-circle-exclamation"></i>{{ wError }}
+                    </div>
+
+                    <div class="flex justify-end gap-2">
+                        <button @click="closeWalkin" class="px-4 py-2 text-xs font-bold rounded-lg text-slate-600 bg-slate-100 hover:bg-slate-200">ปิด</button>
+                        <button @click="submitWalkin" :disabled="!wReady"
+                            class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                            <i :class="wSaving ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
+                            ส่งให้นิสิตยืนยัน
+                        </button>
                     </div>
                 </div>
             </div>

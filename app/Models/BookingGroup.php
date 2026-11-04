@@ -15,7 +15,7 @@ class BookingGroup extends Model
         'cancel_code', 'cancelled_at', 'cancelled_by', 'cancel_reason',
     ];
 
-    protected $casts = ['date' => 'date', 'cancelled_at' => 'datetime'];
+    protected $casts = ['date' => 'date', 'cancelled_at' => 'datetime', 'token_expires_at' => 'datetime'];
 
     /**
      * query ของทุก slot ในรอบการจองเดียวกัน (รวมตัวเอง)
@@ -32,6 +32,12 @@ class BookingGroup extends Model
             ->where('lead_user_id', $this->lead_user_id)
             ->where('room_id', $this->room_id)
             ->where('date', $this->date);
+    }
+
+    /** เจ้าหน้าที่จองแทนนิสิต (walk-in) = source staff + มีรายชื่อนิสิต (จองล่วงหน้าของเจ้าหน้าที่ไม่มี lead) */
+    public function isWalkin(): bool
+    {
+        return $this->source === 'staff' && $this->lead_user_id !== null;
     }
 
     /** key สำหรับ groupBy เป็นรอบการจอง */

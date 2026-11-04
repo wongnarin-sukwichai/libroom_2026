@@ -26,6 +26,7 @@ class AdminBookingController extends Controller
             'upcoming'  => ['confirmed'],
             'confirmed' => ['confirmed'],
             'cancelled' => ['cancelled'],
+            'checkin'   => ['confirmed'],
         ];
         $tab      = $request->get('tab', 'pending');
         $statuses = $statusMap[$tab] ?? $statusMap['pending'];
@@ -36,6 +37,15 @@ class AdminBookingController extends Controller
         $isCancelled   = $tab === 'cancelled';
         $cancelledAt   = 'COALESCE(cancelled_at, updated_at)';
         $upcomingAfter = $isUpcoming ? Carbon::now('Asia/Bangkok')->toDateString() : null;
+        // แท็บแบ่งตาม "ขั้นตอนถัดไป":
+        //   รอดำเนินการ        = ต้องติดต่อเจ้าหน้าที่ (pending / waiting_confirm)
+        //   รอเช็คอินหน้าประตู = ยืนยันแล้ว แต่ยังไม่มีใครเช็คอิน → แตะบัตร/สแกน QR หรือเจ้าหน้าที่กดเช็คอินแทน (ทุกห้อง)
+        //   ยืนยันแล้ว          = กระบวนการเสร็จ: มีคนเช็คอินแล้ว หรือเป็นการจองของเจ้าหน้าที่ (ไม่มีรายชื่อนิสิต)
+        // แท็บรอเช็คอิน ไม่ส่งวันที่ = วันนี้
+        $isCheckin = $tab === 'checkin';
+        if ($isCheckin && ! $date) {
+            $date = Carbon::now('Asia/Bangkok')->toDateString();
+        }
 
         $search = trim((string) $request->get('search', ''));
 
@@ -54,6 +64,12 @@ class AdminBookingController extends Controller
             ->whereNotNull('admin_id')
             ->where('date', '>', $upcomingAfter))
         ->whereIn('status', $statuses)
+        ->when($isCheckin, fn($q) => $q
+            ->whereNotNull('lead_user_id')
+            ->whereDoesntHave('bookings', fn($b) => $b->where('status', 'checked_in')))
+        ->when($tab === 'confirmed', fn($q) => $q->where(fn($w) => $w
+            ->whereNull('lead_user_id')
+            ->orWhereHas('bookings', fn($b) => $b->where('status', 'checked_in'))))
         ->when($search !== '', function ($q) use ($search) {
             $q->where(function ($sub) use ($search) {
                 $like = "%{$search}%";
@@ -74,6 +90,16 @@ class AdminBookingController extends Controller
         $all      = $query->get();
         $sessions = $this->groupIntoSessions($all);
 
+        // รอเช็คอินหน้าประตู: แสดงเฉพาะรอบที่ยังแตะบัตรทัน (ยังไม่เลย HH:15 ของชั่วโมงแรก) — เลยแล้ว cron ยกเลิกเอง ไม่ต้องให้เจ้าหน้าที่เห็น
+        // เรียงตามเวลาเริ่ม (ใกล้เส้นตายก่อน) — ทำหลังจัดกลุ่ม ไม่งั้นรอบหลายชั่วโมงจะแตก
+        if ($isCheckin) {
+            $now      = Carbon::now('Asia/Bangkok');
+            $sessions = array_values(array_filter($sessions, fn($s) => ! $this->checkinWindowOver(
+                $s['date'], $s['start_hour'], $s['end_hour'], ($s['access_control'] ?? '0') === '1', $now
+            )));
+            usort($sessions, fn($a, $b) => [$a['date'], $a['start_hour']] <=> [$b['date'], $b['start_hour']]);
+        }
+
         // Manual pagination
         $perPage  = 10;
         $page     = max(1, (int)$request->get('page', 1));
@@ -90,6 +116,7 @@ class AdminBookingController extends Controller
             'from'          => $total ? ($page - 1) * $perPage + 1 : 0,
             'to'            => min($page * $perPage, $total),
             'pending_count' => $pendingCount,
+            'checkin_count' => $this->doorCheckinCount(),
         ]);
     }
 
@@ -103,6 +130,36 @@ class AdminBookingController extends Controller
      * badge คิวงาน = จำนวน "รอบการจอง" ที่รอเจ้าหน้าที่ (waiting_confirm) — งานที่ staff ต้องลงมือจริง
      * ไม่นับ pending (รอสมาชิกครบ) เพราะเจ้าหน้าที่ทำอะไรไม่ได้ / นับเป็นรอบ ไม่ใช่รายชั่วโมง
      */
+    /**
+     * รอบนี้หมดช่วงรอเช็คอินแล้วหรือยัง (หมดแล้ว = ไม่แสดงในแท็บรอเช็คอิน)
+     * ห้องมี kiosk: เลย HH:15 ของชั่วโมงแรก → cron ยกเลิกทั้งรอบ
+     * ห้องไม่มี kiosk (เช่น ห้อง auto): ไม่มี cron ตัด → แสดงจนหมดเวลาที่จอง (แล้ว cron บันทึก no_show)
+     */
+    private function checkinWindowOver(string $date, int $startHour, int $endHour, bool $isKiosk, Carbon $now): bool
+    {
+        $day = Carbon::parse($date, 'Asia/Bangkok');
+        return ($isKiosk ? $day->copy()->setTime($startHour, 15) : $day->copy()->setTime($endHour, 0))->lte($now);
+    }
+
+    /** จำนวนรอบ "รอเช็คอินหน้าประตู" วันนี้ที่ยังเช็คอินทัน — ตัวเลขบนแท็บ */
+    private function doorCheckinCount(): int
+    {
+        $now = Carbon::now('Asia/Bangkok');
+
+        return BookingGroup::with('room:id,access_control')
+            ->where('date', $now->toDateString())
+            ->where('status', 'confirmed')
+            ->whereNotNull('lead_user_id')
+            ->whereDoesntHave('bookings', fn($b) => $b->where('status', 'checked_in'))
+            ->get(['id', 'session_id', 'lead_user_id', 'room_id', 'date', 'time_id'])
+            ->groupBy(fn($g) => $g->sessionKey())
+            ->reject(fn($slots) => $this->checkinWindowOver(
+                $now->toDateString(), (int) $slots->min('time_id'), (int) $slots->max('time_id') + 1,
+                $slots->first()->room?->access_control === '1', $now
+            ))
+            ->count();
+    }
+
     private function staffActionCount(): int
     {
         return BookingGroup::where('status', 'waiting_confirm')
@@ -158,6 +215,9 @@ class AdminBookingController extends Controller
                     'cancelled_at'  => ($g->cancelled_at ?? $g->updated_at)?->format('Y-m-d H:i'),
                     'min_capacity'  => (int) ($g->room?->zone?->min_capacity ?? 1),
                     'members'       => $this->sessionMembers($g),
+                    'walkin'        => $g->isWalkin(),
+                    'admin_name'    => $g->admin?->name,
+                    'expires_at'    => $g->token_expires_at?->toIso8601String(),
                 ];
             }
         }
@@ -204,6 +264,9 @@ class AdminBookingController extends Controller
             'members'        => $s['members'] ?? [],
             'member_count'   => count($s['members'] ?? []),
             'min_capacity'   => $s['min_capacity'] ?? 1,
+            'walkin'         => $s['walkin'] ?? false,
+            'admin_name'     => $s['admin_name'] ?? null,
+            'expires_at'     => $s['expires_at'] ?? null,
             'status'         => $s['status'],
             'source'         => $s['source'] ?? 'web',
             'confirm_type'   => $s['confirm_type'],
@@ -230,8 +293,8 @@ class AdminBookingController extends Controller
         ]);
 
         $room = Room::with([
-            'zone'          => fn($q) => $q->select('id', 'loc_id', 'title', 'time_weekday', 'time_weekend'),
-            'zone.location' => fn($q) => $q->select('id', 'title'),
+            'zone'          => fn($q) => $q->select('id', 'loc_id', 'title', 'time_weekday', 'time_weekend', 'status', 'min_capacity', 'capacity'),
+            'zone.location' => fn($q) => $q->select('id', 'title', 'status'),
         ])->findOrFail($data['room_id']);
 
         $isWeekend = Carbon::parse($data['date'])->isWeekend();
@@ -292,6 +355,11 @@ class AdminBookingController extends Controller
                     'lead_name'  => $g->lead?->name ?? ($g->admin ? $g->admin->name . ' (เจ้าหน้าที่)' : '—'),
                     'lead_email' => $g->lead?->email,
                     'by_staff'   => $g->lead_user_id === null,
+                    // จองแทนนิสิต = เจ้าหน้าที่สร้าง แต่มีรายชื่อนิสิต (ต่างจากจองล่วงหน้าที่ไม่มีรายชื่อ)
+                    'walkin'     => $g->isWalkin(),
+                    'expires_at' => $g->token_expires_at?->toIso8601String(),
+                    'admin_name' => $g->admin?->name,
+                    'created_at' => $g->created_at?->toIso8601String(),
                     'occupants'  => $occ,
                 ];
             }
@@ -315,6 +383,10 @@ class AdminBookingController extends Controller
                 'lead_name'  => $s['lead_name'],
                 'lead_email' => $s['lead_email'],
                 'by_staff'   => $s['by_staff'],
+                'walkin'     => $s['walkin'],
+                'admin_name' => $s['admin_name'],
+                'created_at' => $s['created_at'],
+                'expires_at' => $s['expires_at'],
                 'occupants'  => $s['occupants'],
                 'checked_in' => $checkedIn,
             ];
@@ -339,10 +411,177 @@ class AdminBookingController extends Controller
                 'loc_title'      => $room->zone?->location?->title,
                 'confirm_type'   => $room->confirm_type,
                 'access_control' => $room->access_control,
+                // สำหรับ modal จองแทนนิสิต
+                'is_open'        => $room->status !== '1' && $room->zone?->status !== '1' && $room->zone?->location?->status !== '1',
+                'min_capacity'   => (int) ($room->zone?->min_capacity ?? 1),
+                'max_capacity'   => $this->zoneMaxCapacity($room->zone),
             ],
             'date'       => $data['date'],
             'is_weekend' => $isWeekend,
             'slots'      => array_values($slots),
+        ]);
+    }
+
+    // ─── จองแทนนิสิต (walk-in) — เฉพาะชั่วโมงปัจจุบัน, ผังห้อง ───────────────
+    // นิสิตมาเคาน์เตอร์ตอนห้องว่างกลางชั่วโมง → เจ้าหน้าที่กรอกรายชื่อ → "รอนิสิตยืนยัน" 10 นาที
+    //   หัวหน้ากลุ่มกดยืนยันเอง (สแกน QR บนจอเจ้าหน้าที่ หรือหน้าการจองของฉัน) → confirmed + checked_in ทุกคน
+    //   ปฏิเสธ → ยกเลิกทันที / ไม่กดใน 10 นาที → cron cancelExpiredPending (ตัวเดิม) ยกเลิกเอง — ไม่แก้ cron
+    // แยกจาก "จองล่วงหน้า" (staffStore) ด้วย lead_user_id != null (source=staff + มีรายชื่อนิสิต)
+    // join_token = token ยืนยัน (/walkin/{token}) — /join/{token} ปฏิเสธ walk-in (BookingController)
+    public const WALKIN_CONFIRM_MINUTES = 10;
+
+    /** ตรวจสมาชิก 1 คนว่าจองแทนชั่วโมงนี้ในโซนนี้ได้ไหม — null = ผ่าน, string = เหตุผลที่ไม่ผ่าน */
+    private function walkinProblem(\App\Models\Member $m, $zone, string $date, int $hour): ?string
+    {
+        if ($m->isBlocked()) {
+            return 'ถูกระงับสิทธิ์การจอง' . ($m->block_reason ? " ({$m->block_reason})" : '');
+        }
+        if (\App\Support\Quota::hasTimeConflict($m->id, $date, [$hour])) {
+            return 'มีการจองที่อื่นในชั่วโมงนี้แล้ว';
+        }
+        $zoneQuota = (int) ($zone->zone_daily_quota ?? 3);
+        if (\App\Support\Quota::usedHours($m->id, $date, $zone->id) + 1 > $zoneQuota) {
+            return "ใช้โควตาโซนนี้ครบแล้ว ({$zoneQuota} ชม./วัน)";
+        }
+        $daily = \App\Support\Quota::dailyLimit();
+        if (\App\Support\Quota::usedHours($m->id, $date) + 1 > $daily) {
+            return "ใช้โควตารวมวันนี้ครบแล้ว ({$daily} ชม./วัน)";
+        }
+        return null;
+    }
+
+    /** ความจุสูงสุดจาก zones.capacity (ข้อความ เช่น "2-6 คน" → 6, "5 คนขึ้นไป"/"1 คน" → ไม่จำกัด/1) */
+    private function zoneMaxCapacity($zone): ?int
+    {
+        $txt = (string) ($zone->capacity ?? '');
+        if ($txt === '' || str_contains($txt, 'ขึ้นไป')) return null;
+        preg_match_all('/\d+/', $txt, $m);
+        return $m[0] ? (int) end($m[0]) : null;
+    }
+
+    /** ห้องเปิด + ไม่ใช่วันหยุด + ชั่วโมงปัจจุบันอยู่ในเวลาให้บริการของโซน — null = ผ่าน */
+    private function walkinRoomProblem(Room $room, Carbon $now): ?string
+    {
+        $zone = $room->zone;
+        if ($room->status === '1' || $zone?->status === '1' || $zone?->location?->status === '1') {
+            return 'ห้องนี้ปิดให้บริการอยู่';
+        }
+        if (Holiday::where('d', (string) $now->day)->where('m', (string) $now->month)->exists()) {
+            return 'วันนี้เป็นวันหยุด';
+        }
+        $config = Time::find($now->isWeekend() ? $zone->time_weekend : $zone->time_weekday);
+        if (! $config || $now->hour < $config->start_hour || $now->hour >= $config->end_hour) {
+            return 'ชั่วโมงนี้อยู่นอกเวลาให้บริการของห้อง';
+        }
+        return null;
+    }
+
+    // GET /admin/bookings/walkin-lookup?room_id=&q= — ค้นหาสมาชิกด้วยอีเมล (≥3 ตัว) + ผลตรวจรายคน
+    public function walkinLookup(Request $request)
+    {
+        $data = $request->validate([
+            'room_id' => 'required|integer|exists:rooms,id',
+            'q'       => 'required|string|min:3|max:100',
+        ]);
+
+        $now  = Carbon::now('Asia/Bangkok');
+        $room = Room::with('zone')->findOrFail($data['room_id']);
+
+        return response()->json(
+            \App\Models\Member::where('email', 'like', '%' . $data['q'] . '%')
+                ->orderBy('email')
+                ->limit(5)
+                ->get()
+                ->map(fn($m) => [
+                    'id'      => $m->id,
+                    'name'    => $m->name,
+                    'email'   => $m->email,
+                    'problem' => $this->walkinProblem($m, $room->zone, $now->toDateString(), $now->hour),
+                ])
+        );
+    }
+
+    // POST /admin/bookings/walkin {room_id, member_ids[]} — คนแรก = หัวหน้ากลุ่ม
+    public function walkinStore(Request $request)
+    {
+        $data = $request->validate([
+            'room_id'      => 'required|integer|exists:rooms,id',
+            'member_ids'   => 'required|array|min:1',
+            'member_ids.*' => 'integer|distinct|exists:members,id',
+        ]);
+
+        $now   = Carbon::now('Asia/Bangkok');
+        $date  = $now->toDateString();
+        $hour  = $now->hour;
+        $room  = Room::with('zone.location')->findOrFail($data['room_id']);
+        $zone  = $room->zone;
+        $admin = Auth::guard('admin')->user();
+
+        if ($p = $this->walkinRoomProblem($room, $now)) {
+            return response()->json(['message' => $p], 422);
+        }
+
+        $min = (int) ($zone->min_capacity ?? 1);
+        $max = $this->zoneMaxCapacity($zone);
+        $n   = count($data['member_ids']);
+        if ($n < $min) {
+            return response()->json(['message' => "ห้องนี้ต้องมีผู้ใช้อย่างน้อย {$min} คน (กรอก {$n} คน)"], 422);
+        }
+        if ($max && $n > $max) {
+            return response()->json(['message' => "ห้องนี้รับได้สูงสุด {$max} คน (กรอก {$n} คน)"], 422);
+        }
+
+        // เรียงตามลำดับที่ส่งมา (คนแรก = หัวหน้ากลุ่ม)
+        $members = \App\Models\Member::whereIn('id', $data['member_ids'])->get()->sortBy(
+            fn($m) => array_search($m->id, $data['member_ids'])
+        )->values();
+
+        try {
+            $group = DB::transaction(function () use ($room, $date, $hour, $members, $zone, $admin) {
+                $taken = BookingGroup::where('room_id', $room->id)->where('date', $date)->where('time_id', $hour)
+                    ->whereIn('status', ['pending', 'waiting_confirm', 'confirmed'])
+                    ->lockForUpdate()->exists();
+                if ($taken) throw new \RuntimeException('ช่องเวลานี้มีผู้จองแล้ว');
+
+                foreach ($members as $m) {
+                    if ($p = $this->walkinProblem($m, $zone, $date, $hour)) {
+                        throw new \RuntimeException("{$m->name}: {$p}");
+                    }
+                }
+
+                // pending + token หมดอายุใน 10 นาที → ระหว่างรอ ห้อง+โควตาถูกกันไว้ (Quota นับ pending)
+                $group = BookingGroup::create([
+                    'room_id'          => $room->id,
+                    'date'             => $date,
+                    'time_id'          => $hour,
+                    'session_id'       => (string) Str::uuid(),
+                    'lead_user_id'     => $members->first()->id,
+                    'admin_id'         => $admin?->id,
+                    'status'           => 'pending',
+                    'source'           => 'staff',
+                    'join_token'       => Str::random(40),
+                    'token_expires_at' => Carbon::now()->addMinutes(self::WALKIN_CONFIRM_MINUTES),
+                ]);
+
+                foreach ($members as $m) {
+                    \App\Models\Booking::create(['group_id' => $group->id, 'user_id' => $m->id, 'status' => 'pending']);
+                }
+
+                return $group;
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $url = route('walkin.show', $group->join_token);
+
+        return response()->json([
+            'message'    => sprintf('สร้างการจองแทนแล้ว %02d:00 – %02d:00 น. — รอ %s ยืนยันภายใน %d นาที',
+                $hour, $hour + 1, $members->first()->name, self::WALKIN_CONFIRM_MINUTES),
+            'lead_name'  => $members->first()->name,
+            'url'        => $url,
+            'qr_svg'     => (string) \SimpleSoftwareIO\QrCode\Facades\QrCode::size(200)->margin(1)->generate($url),
+            'expires_at' => $group->token_expires_at->toIso8601String(),
         ]);
     }
 
