@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 
@@ -152,6 +152,23 @@ async function fetchMembers(page = 1) {
         loading.value = false;
     }
 }
+
+// เลขหน้าแบบย่อ 1 … 4 5 6 … 120 (สมาชิกจริงหลักพันคน → ร้อยกว่าหน้า แสดงครบทุกหน้าแล้วล้นจอ)
+const pageNumbers = computed(() => {
+    const pages: (number | '...')[] = [];
+    const last = paginated.value.last_page;
+    const cur  = paginated.value.current_page;
+    if (last <= 7) {
+        for (let i = 1; i <= last; i++) pages.push(i);
+        return pages;
+    }
+    pages.push(1);
+    if (cur > 3) pages.push('...');
+    for (let i = Math.max(2, cur - 1); i <= Math.min(last - 1, cur + 1); i++) pages.push(i);
+    if (cur < last - 2) pages.push('...');
+    pages.push(last);
+    return pages;
+});
 
 onMounted(() => fetchMembers());
 
@@ -336,16 +353,30 @@ watch(search, () => {
             <!-- Pagination -->
             <div v-if="paginated.last_page > 1" class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
                 <span class="text-xs text-slate-400">{{ paginated.from }}–{{ paginated.to }} จาก {{ paginated.total }} ราย</span>
-                <div class="flex gap-1">
+                <div class="flex items-center gap-1">
                     <button
-                        v-for="p in paginated.last_page"
-                        :key="p"
-                        @click="fetchMembers(p)"
-                        :class="p === paginated.current_page
-                            ? 'bg-blue-900 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="w-7 h-7 text-xs font-bold rounded-lg transition-all"
-                    >{{ p }}</button>
+                        @click="fetchMembers(paginated.current_page - 1)"
+                        :disabled="paginated.current_page <= 1"
+                        class="w-7 h-7 text-xs rounded-lg transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="หน้าก่อนหน้า"
+                    ><i class="fa-solid fa-chevron-left"></i></button>
+                    <template v-for="(p, i) in pageNumbers" :key="i">
+                        <span v-if="p === '...'" class="px-1 text-xs text-slate-400">…</span>
+                        <button
+                            v-else
+                            @click="fetchMembers(p)"
+                            :class="p === paginated.current_page
+                                ? 'bg-blue-900 text-white'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                            class="h-7 min-w-[1.75rem] px-1.5 text-xs font-bold rounded-lg transition-all"
+                        >{{ p }}</button>
+                    </template>
+                    <button
+                        @click="fetchMembers(paginated.current_page + 1)"
+                        :disabled="paginated.current_page >= paginated.last_page"
+                        class="w-7 h-7 text-xs rounded-lg transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="หน้าถัดไป"
+                    ><i class="fa-solid fa-chevron-right"></i></button>
                 </div>
             </div>
         </div>
