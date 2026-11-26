@@ -5,7 +5,7 @@ import Swal from "sweetalert2";
 import { canEndEarly, canCancelWhole, promptEndEarly } from "./endEarly";
 
 interface BRoom { id: number; title: string; confirm_type: "auto" | "manual"; access_control: "0" | "1"; status: "0" | "1" }
-interface BZone { id: number; title: string; status: "0" | "1"; rooms: BRoom[] }
+interface BZone { id: number; title: string; status: "0" | "1"; scan_only?: "0" | "1"; rooms: BRoom[] }
 interface BLoc  { id: number; title: string; status: "0" | "1"; zones: BZone[] }
 
 interface Occupant { name: string; status: string }
@@ -236,6 +236,13 @@ const roomStatus = (room: BRoom) => {
 
 const isToday = computed(() => props.date === todayStr());
 
+// โซน "สแกน QR เท่านั้น" (เช่น Chair Zone 69 ตัว) ไว้ท้ายสุด — นิสิตจอง/เช็คอินเองที่ตัวอุปกรณ์ staff ไม่ต้องดูบ่อย
+// มือถือจะได้ไม่ต้องเลื่อนผ่านเก้าอี้ทั้งหมดกว่าจะถึงโซนอื่น (โซนอื่นเรียงตามเดิม)
+const boardZones = computed(() => {
+    const zones = activeLoc.value?.zones ?? [];
+    return [...zones.filter(z => z.scan_only !== "1"), ...zones.filter(z => z.scan_only === "1")];
+});
+
 // actions ─────────────────────────────────────────────
 const acting = ref(false);
 
@@ -364,7 +371,7 @@ onMounted(async () => {
                     </div>
                 </div>
 
-                <div v-for="zone in activeLoc?.zones ?? []" :key="zone.id"
+                <div v-for="zone in boardZones" :key="zone.id"
                     class="overflow-hidden bg-white border shadow-sm border-slate-200 rounded-2xl">
                     <div class="flex items-center gap-2 px-5 py-3 border-b bg-slate-50/60 border-slate-100">
                         <span class="text-sm font-bold text-slate-900">{{ zone.title }}</span>
